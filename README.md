@@ -74,6 +74,19 @@ node test-contract.js all 0
 node test-contract.js
 ```
 
+### .env
+```
+RPC_URL = RPC URL = Edu Chain Testnet
+CHAIN_ID=656476
+PRIVATE_KEY=Owner의 Private Key  
+CONTRACT_ADDRESS=컨트랙트 주소
+
+VALIDATOR_ADDRESS=벨리데이터 주소
+BUILDER_ADDRESS=빌더 주소
+BUILDER_PRIVATE_KEY=빌더 Private Key
+
+```
+
 
 ### Result 
 ```
