@@ -66,6 +66,7 @@ ludium-portal-contract/
 | `setFee / getFee` | 수수료 설정 및 조회 |
 
 ---
+![LdEduProgram Flow](./ludiumStructure.png)
 
 ## 📖 사용법
 
