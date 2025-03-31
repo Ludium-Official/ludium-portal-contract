@@ -1,7 +1,60 @@
 # 📚 LdEduProgram 스마트 컨트랙트
 
 LdEduProgram 스마트 컨트랙트는 교육 프로그램을 관리하고, 제작자와 개발자 간의 보상을 투명하게 분배하는 역할을 합니다.
+## 🚀 Features
 
+- Solidity(`^0.8.20)`
+
+## 📋 Prerequisites
+
+- Node.js (v16 or higher)
+- Npm or Yarn
+- ethers.js v5
+- env
+
+## ⚙️ Installation
+
+```bash
+git clone <https://github.com/Ludium-Official/ludium-portal-contract.git>
+cd ludium-portal-contract
+npm install
+```
+
+**🚀 Quick Start**
+
+```
+# 프로그램 생성
+node test-contract.js create
+
+# 승인 (ID 지정)
+node test-contract.js approve 0
+
+# 보상 청구
+node test-contract.js claim 0
+
+# 정보 조회
+node test-contract.js info 0
+
+# 전체 흐름 테스트
+node test-contract.js all
+```
+
+## 📂 Directory Structure
+
+```
+
+ludium-portal-contract/
+├── abi/
+│   └── LdEduProgram.json            # ABI 정의 파일
+├── contract/
+│   ├── artifacts/                   # 컴파일 정보
+│   └── LdEduProgram.sol             # 메인 스마트 컨트랙트
+├── .gitignore
+├── package.json
+├── package-lock.json
+├── README.md                        # 프로젝트 설명서
+└── test-contract.js                 # 테스트 및 실행 스크립트
+```
 ## 📌 기능 개요
 | 기능 | 설명 |
 |------|------|
@@ -13,6 +66,20 @@ LdEduProgram 스마트 컨트랙트는 교육 프로그램을 관리하고, 제�
 | `setFee / getFee` | 수수료 설정 및 조회 |
 
 ---
+
+## 📌 Feature Overview
+| Function             | Description                                                           |
+|----------------------|-----------------------------------------------------------------------|
+| `createEduProgram`   | Creates a new education program                                       |
+| `approveProgram`     | Validator approves the program                                        |
+| `submitMilestone`    | Builder submits a milestone                                           |
+| `approveMilestone`   | Validator approves the milestone and transfers the reward             |
+| `claimGrants`        | Builder claims rewards for an approved program                       |
+| `reclaimFunds`       | Program creator reclaims funds from an expired, unapproved program   |
+| `updateValidator`    | Updates the validator for the program                                |
+| `setFee / getFee`    | Sets and retrieves the platform fee                                  |
+
+![LdEduProgram Flow](./ludimSturcture.jpg)
 
 ## 📖 사용법
 
@@ -115,3 +182,15 @@ ID: 0
 청구 여부: 미청구
 빌더: 없음
 ```
+
+## 📐 Convention
+
+- Naming
+    - Contract: PascalCase
+    - functions/variables: camelCase
+- CommentStyle:
+    - NatSpec :  `@notice`, `@param`
+- Contract Security:
+    - `nonReentrant` 사용
+    - `Ownable`로 수수료 설정 등 관리자 권한 구분
+    
