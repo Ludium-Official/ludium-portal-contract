@@ -167,7 +167,55 @@ async function claimGrants(programId) {
     throw error;
   }
 }
+// 빌더가 Proposal 제출
+async function submitProposal(programId) {
+  const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
+  const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
 
+  const milestoneNames = ["1단계", "2단계"];
+  const milestoneDescriptions = ["기초 개발", "배포 완료"];
+  const milestonePrices = [
+    ethers.utils.parseEther("0.005"),
+    ethers.utils.parseEther("0.005"),
+  ];
+
+  const tx = await builderContract.submitProposal(
+    programId,
+    milestoneNames,
+    milestoneDescriptions,
+    milestonePrices
+  );
+
+  const receipt = await tx.wait();
+  const event = receipt.events.find(e => e.event === 'ProposalSubmitted');
+  const proposalId = event.args.proposalId.toNumber();
+
+  console.log(`✅ Proposal 제출 완료 - ID: ${proposalId}`);
+  return proposalId;
+}
+// Validator가 Proposal 선택
+async function evaluateProposal(programId, proposalId) {
+  const tx = await contract.evaluateProposal(programId, proposalId, true);
+  await tx.wait();
+  console.log(`🔎 Proposal 선택 완료 (programId: ${programId}, proposalId: ${proposalId})`);
+}
+
+// Builder가 마일스톤 제출
+async function submitMilestone(programId, milestoneId, links) {
+  const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
+  const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
+
+  const tx = await builderContract.submitMilestone(programId, milestoneId, links);
+  await tx.wait();
+  console.log(`📝 마일스톤 제출 완료 (programId: ${programId}, milestoneId: ${milestoneId})`);
+}
+
+// Validator가 마일스톤 승인 및 보상 전송
+async function approveMilestone(programId, milestoneId) {
+  const tx = await contract.approveMilestone(programId, milestoneId);
+  await tx.wait();
+  console.log(`✅ 마일스톤 승인 완료 (보상 전송 포함)`);
+}
 
 // 프로그램 정보 조회
 async function getProgramInfo(programId) {
@@ -200,68 +248,78 @@ async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
   const programId = args[1] ? parseInt(args[1]) : undefined;
+  const proposalId = args[2] ? parseInt(args[2]) : undefined;
+  const milestoneId = args[3] ? parseInt(args[3]) : undefined;
 
   try {
     switch (command) {
       case 'create':
         await createProgram();
         break;
-      
-      case 'approve':
-        if (!programId && programId !== 0) {
-          console.error("❌ 프로그램 ID를 지정해주세요: node test-contract.js approve PROGRAM_ID");
+
+      case 'submit-proposal':
+        if (programId === undefined) {
+          console.error("❌ 프로그램 ID를 지정해주세요: node test.js submit-proposal <programId>");
           process.exit(1);
         }
-        await approveProgram(programId);
+        await submitProposal(programId);
         break;
-      
-      case 'claim':
-        if (!programId && programId !== 0) {
-          console.error("❌ 프로그램 ID를 지정해주세요: node test-contract.js claim PROGRAM_ID");
+
+      case 'evaluate':
+        if (programId === undefined || proposalId === undefined) {
+          console.error("❌ 프로그램 ID와 Proposal ID를 지정해주세요: node test.js evaluate <programId> <proposalId>");
           process.exit(1);
         }
-        await claimGrants(programId);
+        await evaluateProposal(programId, proposalId);
         break;
-      
+
+      case 'submit-milestone':
+        if (programId === undefined || milestoneId === undefined) {
+          console.error("❌ 프로그램 ID와 마일스톤 ID를 지정해주세요: node test.js submit-milestone <programId> <milestoneId>");
+          process.exit(1);
+        }
+        await submitMilestone(programId, milestoneId, ["https://example.com/milestone"]);
+        break;
+
+      case 'approve-milestone':
+        if (programId === undefined || milestoneId === undefined) {
+          console.error("❌ 프로그램 ID와 마일스톤 ID를 지정해주세요: node test.js approve-milestone <programId> <milestoneId>");
+          process.exit(1);
+        }
+        await approveMilestone(programId, milestoneId);
+        break;
+
       case 'info':
-        if (!programId && programId !== 0) {
-          console.error("❌ 프로그램 ID를 지정해주세요: node test-contract.js info PROGRAM_ID");
+        if (programId === undefined) {
+          console.error("❌ 프로그램 ID를 지정해주세요: node test.js info <programId>");
           process.exit(1);
         }
         await getProgramInfo(programId);
         break;
-      
+
       case 'all':
-        if (programId) {
-          // 기존 프로그램 ID로 전체 프로세스 테스트
-          await getProgramInfo(programId);
-          await approveProgram(programId);
-          await getProgramInfo(programId);
-          await claimGrants(programId);
-          await getProgramInfo(programId);
-        } else {
-          // 새 프로그램 생성부터 전체 프로세스 테스트
-          const newProgramId = await createProgram();
-          if (newProgramId !== null) {
-            await getProgramInfo(newProgramId);
-            await approveProgram(newProgramId);
-            await getProgramInfo(newProgramId);
-            await claimGrants(newProgramId);
-            await getProgramInfo(newProgramId);
-          }
-        }
+        const newProgramId = await createProgram();
+        const newProposalId = await submitProposal(newProgramId);
+        await evaluateProposal(newProgramId, newProposalId);
+        await submitMilestone(newProgramId, 0, ["https://github.com/repo"]);
+        await approveMilestone(newProgramId, 0);
+        await submitMilestone(newProgramId, 1, ["https://demo.app"]);
+        await approveMilestone(newProgramId, 1);
+        await getProgramInfo(newProgramId);
         break;
-      
+
       default:
         console.log(`
-사용법: node test-contract.js <command> [programId]
+사용법: node test.js <command> [programId] [proposalId] [milestoneId]
 
 명령어:
-  create              새 교육 프로그램 생성
-  approve <programId> 프로그램 승인 및 빌더 지정
-  claim <programId>   그랜츠 청구
-  info <programId>    프로그램 정보 조회
-  all [programId]     전체 프로세스 테스트 (ID 없으면 새로 생성)
+  create                            새 교육 프로그램 생성
+  submit-proposal <programId>       Proposal 제출
+  evaluate <programId> <proposalId> Proposal 선택
+  submit-milestone <programId> <milestoneId> 마일스톤 제출
+  approve-milestone <programId> <milestoneId> 마일스톤 승인
+  info <programId>                  프로그램 정보 조회
+  all                               end-to-end 전체 흐름 테스트
         `);
     }
   } catch (error) {
