@@ -2,13 +2,16 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol"; 
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract LdEduProgram is Ownable, ReentrancyGuard {
 
     // 이벤트 정의
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
     event ProgramApproved(uint256 indexed id, address builder);
+    event ProposalSubmitted(uint256 indexed programId, uint256 proposalId, address builder);
+    event MilestoneSubmitted(uint256 indexed id, uint256 milestoneId, string[] links);
+    event MilestoneApproved(uint256 indexed id, uint256 milestoneId, uint256 reward);
     event ProgramClaimed(uint256 indexed id, address builder, uint256 amount);
     event FundsReclaimed(uint256 indexed id, address maker, uint256 amount);
     event ValidatorUpdated(uint256 indexed id, address newValidator);
@@ -16,44 +19,59 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     // 그랜츠 프로그램 구조체 (EduProgram)
     struct EduProgram {
-        uint256 id;          // 프로그램 유니크 아이디
-        string name;         // 프로그램 이름
-        uint256 price;       // 예치 금액 (wei 단위)
-        uint256 startTime;   // 프로그램 시작 시간 (unix time)
-        uint256 endTime;     // 프로그램 종료 시간 (unix time)
-        address maker;       // 프로그램 생성자
-        address validator;   // 승인 권한을 가진 벨리데이터
-        bool approve;        // 승인 여부
-        bool claimed;        // 이미 청구 또는 회수되었는지 여부
-        address builder;     // 승인 후 청구할 빌더 주소
+        uint256 id;
+        string name;
+        uint256 price;
+        uint256 startTime;
+        uint256 endTime;
+        address maker;
+        address validator;
+        bool approve;
+        bool claimed;
+        address builder;
     }
 
-    // 벨리데이터 변경을 위한 구조체 (필요 시 활용)
+    struct Milestone {
+        uint256 id;
+        string name;
+        string description;
+        uint256 price;
+        bool submitted;
+        bool approved;
+        bool claimed;
+        string[] links;
+    }
+
+    enum ProposalStatus { Applied, Denied, Selected }
+
+    struct Proposal {
+        uint256 id;
+        address builder;
+        string[] milestoneNames;
+        string[] milestoneDescriptions;
+        uint256[] milestonePrices;
+        ProposalStatus status;
+    }
+
     struct ValAddr {
         uint256 programId;
         bool isValidator;
     }
 
-    // 프로그램 저장소: 프로그램 id -> EduProgram
     mapping(uint256 => EduProgram) public eduPrograms;
-    uint256 public nextProgramId;
+    mapping(uint256 => Proposal[]) public programProposals;
+    mapping(uint256 => Milestone[]) public programMilestones;
+    mapping(uint256 => uint256) public selectedProposalIndex;
+    mapping(uint256 => uint256) public nextProposalId;
+    mapping(uint256 => uint256) public nextMilestoneId;
 
-    // 수수료 (fee는 basis point 단위, 예: 100 = 1% 수수료)
+    uint256 public nextProgramId;
     uint256 private fee;
 
-    constructor(address initialOwner) Ownable(initialOwner) {
-    }
+    constructor(address initialOwner) Ownable(initialOwner) {}
 
     /**
      * @notice 프로그램 생성 함수
-     * @param _name 프로그램 이름
-     * @param _price 프로그램 금액 (wei 단위)
-     * @param _startTime 프로그램 시작 시간 (unix time)
-     * @param _endTime 프로그램 종료 시간 (unix time)
-     * @param _validator 승인할 벨리데이터 주소
-     *
-     * 생성 시 msg.sender는 예치금(_price) 만큼 ETH를 전송해야 하며,
-     * 프로그램 정보가 저장되고 이후 벨리데이터가 승인할 수 있도록 설정됩니다.
      */
     function createEduProgram(
         string memory _name,
@@ -65,7 +83,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         require(msg.value == _price, "The ETH sent does not match the program price");
         require(_startTime < _endTime, "The Start time must be earlier than the end time.");
         uint256 programId = nextProgramId;
-  
+
         eduPrograms[programId] = EduProgram({
             id: programId,
             name: _name,
@@ -84,10 +102,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     /**
      * @notice 벨리데이터가 프로그램을 승인하는 함수
-     * @param programId 프로그램 아이디
-     * @param _builder 빌더 주소 (프로그램 수행 후 그랜츠를 청구할 사용자)
-     *
-     * 승인은 프로그램 종료 시간 전까지 가능하며, 승인 시 빌더 주소가 기록됩니다.
      */
     function approveProgram(uint256 programId, address _builder) external {
         EduProgram storage program = eduPrograms[programId];
@@ -101,36 +115,124 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice 승인된 빌더가 그랜츠를 청구하는 함수
-     * @param programId 프로그램 아이디
-     *
-     * 청구는 프로그램 시작 시간 이후, 종료 시간 이전에만 가능하며,
-     * 수수료가 적용될 경우 수수료는 계약 소유자에게 전송됩니다.
+     * @notice 빌더가 프로그램에 대한 제안서를 제출하는 함수
      */
-    function claimGrants(uint256 programId) external nonReentrant {
+    function submitProposal(
+        uint256 programId,
+        string[] calldata names,
+        string[] calldata descriptions,
+        uint256[] calldata prices
+    ) external {
         EduProgram storage program = eduPrograms[programId];
-        require(program.approve, "The program is not approved.");
-        require(!program.claimed, "Already claimed.");
-        require(msg.sender == program.builder, "You do not have permission to claim.");
-        require(block.timestamp >= program.startTime, "The program has not started yet.");
-        require(block.timestamp <= program.endTime, "The program billing period has passed.");
+        require(block.timestamp < program.endTime, "Program ended");
+        require(names.length == descriptions.length && names.length == prices.length, "Input mismatch");
 
-        program.claimed = true;
-
-        uint256 payout = program.price;
-        if (fee > 0) {
-            uint256 feeAmount = (payout * fee) / 10000;
-            payout = payout - feeAmount;
-            payable(owner()).transfer(feeAmount);
+        uint256 total;
+        for (uint256 i = 0; i < prices.length; i++) {
+            total += prices[i];
         }
-        payable(program.builder).transfer(payout);
+        require(total == program.price, "Milestone total != program price");
 
-        emit ProgramClaimed(programId, program.builder, payout);
+        uint256 proposalId = nextProposalId[programId]++;
+
+        Proposal memory p = Proposal({
+            id: proposalId,
+            builder: msg.sender,
+            milestoneNames: names,
+            milestoneDescriptions: descriptions,
+            milestonePrices: prices,
+            status: ProposalStatus.Applied
+        });
+
+        programProposals[programId].push(p);
+        emit ProposalSubmitted(programId, proposalId, msg.sender);
+    }
+
+    /**
+     * @notice 벨리데이터가 Proposal을 선택 또는 거절하는 함수
+     */
+    function evaluateProposal(uint256 programId, uint256 proposalId, bool isSelected) external {
+        EduProgram storage program = eduPrograms[programId];
+        require(msg.sender == program.validator, "Not validator");
+
+        Proposal[] storage proposals = programProposals[programId];
+        bool found = false;
+
+        for (uint256 i = 0; i < proposals.length; i++) {
+            if (proposals[i].id == proposalId) {
+                Proposal storage proposal = proposals[i];
+                require(proposal.status == ProposalStatus.Applied, "Already evaluated");
+
+                if (isSelected) {
+                    require(program.builder == address(0), "Already selected");
+                    proposal.status = ProposalStatus.Selected;
+                    program.builder = proposal.builder;
+                    program.approve = true;
+                    selectedProposalIndex[programId] = i;
+
+                    for (uint256 j = 0; j < proposal.milestoneNames.length; j++) {
+                        uint256 milestoneId = nextMilestoneId[programId]++;
+                        programMilestones[programId].push(Milestone({
+                            id: milestoneId,
+                            name: proposal.milestoneNames[j],
+                            description: proposal.milestoneDescriptions[j],
+                            price: proposal.milestonePrices[j],
+                            submitted: false,
+                            approved: false,
+                            claimed: false,
+                            links: new string[](0)
+                        }));
+                    }
+                    emit ProgramApproved(programId, proposal.builder);
+                } else {
+                    proposal.status = ProposalStatus.Denied;
+                }
+                found = true;
+                break;
+            }
+        }
+        require(found, "Proposal ID not found");
+    }
+
+    /**
+     * @notice 빌더가 마일스톤 결과를 제출하는 함수
+     */
+    function submitMilestone(uint256 programId, uint256 milestoneId, string[] calldata links) external {
+        EduProgram storage program = eduPrograms[programId];
+        require(program.approve, "Not approved");
+        require(msg.sender == program.builder, "Not selected builder");
+
+        Milestone storage m = programMilestones[programId][milestoneId];
+        require(!m.submitted, "Already submitted");
+
+        m.submitted = true;
+        m.links = links;
+        emit MilestoneSubmitted(programId, milestoneId, links);
+    }
+
+    /**
+     * @notice 벨리데이터가 마일스톤을 승인하고 보상을 지급하는 함수
+     */
+    function approveMilestone(uint256 programId, uint256 milestoneId) external nonReentrant {
+        EduProgram storage program = eduPrograms[programId];
+        require(msg.sender == program.validator, "Not validator");
+
+        Milestone storage m = programMilestones[programId][milestoneId];
+        require(m.submitted, "Not submitted");
+        require(!m.approved && !m.claimed, "Already handled");
+
+        m.approved = true;
+        m.claimed = true;
+
+        (bool sent, ) = payable(program.builder).call{value: m.price}("");
+        require(sent, "ETH transfer failed");
+
+        emit MilestoneApproved(programId, milestoneId, m.price);
+        emit ProgramClaimed(programId, program.builder, m.price);
     }
 
     /**
      * @notice 프로그램 기간 만료 후, 아직 승인되지 않은 경우 제작자가 예치금을 회수하는 함수
-     * @param programId 프로그램 아이디
      */
     function reclaimFunds(uint256 programId) external nonReentrant {
         EduProgram storage program = eduPrograms[programId];
@@ -147,8 +249,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     /**
      * @notice 제작자가 승인 벨리데이터를 변경하는 함수
-     * @param programId 프로그램 아이디
-     * @param newValidator 새로운 벨리데이터 주소
      */
     function updateValidator(uint256 programId, address newValidator) external {
         EduProgram storage program = eduPrograms[programId];
@@ -159,8 +259,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice 계약 소유자가 수수료를 설정하는 함수 (basis point 단위)
-     * @param _fee 새로운 수수료 (예: 100 = 1%)
+     * @notice 계약 소유자가 수수료를 설정하는 함수
      */
     function setFee(uint256 _fee) external onlyOwner {
         fee = _fee;
@@ -173,4 +272,4 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     function getFee() external view returns (uint256) {
         return fee;
     }
-}
+} 
