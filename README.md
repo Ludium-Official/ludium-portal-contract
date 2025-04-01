@@ -26,6 +26,18 @@ npm install
 # 프로그램 생성
 node test-contract.js create
 
+# Proposal 제출
+node test-contract.js submit-proposal <programId>
+
+# Proposal 선택
+node test-contract.js evaluate <programId> <proposalId>
+
+# 마일스톤 제출
+node test-contract.js submit-milestone <programId> <milestoneId>
+
+# 마일스톤 승인
+node test-contract.js approve-milestone <programId> <milestoneId>
+
 # 승인 (ID 지정)
 node test-contract.js approve 0
 
@@ -56,28 +68,30 @@ ludium-portal-contract/
 └── test-contract.js                 # 테스트 및 실행 스크립트
 ```
 ## 📌 기능 개요
+## 📌 기능 개요
 | 기능 | 설명 |
 |------|------|
-| `createEduProgram` | 교육 프로그램을 생성 |
-| `approveProgram` | 벨리데이터가 프로그램을 승인 |
-| `claimGrants` | 빌더가 승인된 프로그램 보상 청구 |
-| `reclaimFunds` | 만료된 프로그램의 예치금을 제작자가 회수 |
-| `updateValidator` | 벨리데이터를 변경 |
+| `createEduProgram` | 교육 프로그램 생성 |
+| `submitProposal` | 빌더가 제안서 제출 |
+| `evaluateProposal` | 벨리데이터가 제안서 선택 또는 거절 |
+| `submitMilestone` | 빌더가 마일스톤 결과 제출 |
+| `approveMilestone` | 벨리데이터가 마일스톤 승인 및 보상 지급 |
+| `reclaimFunds` | 만료된 프로그램의 예치금 회수 |
+| `updateValidator` | 벨리데이터 주소 변경 |
 | `setFee / getFee` | 수수료 설정 및 조회 |
 
 ---
 
-## 📌 Feature Overview
 | Function             | Description                                                           |
 |----------------------|-----------------------------------------------------------------------|
 | `createEduProgram`   | Creates a new education program                                       |
-| `approveProgram`     | Validator approves the program                                        |
-| `submitMilestone`    | Builder submits a milestone                                           |
-| `approveMilestone`   | Validator approves the milestone and transfers the reward             |
-| `claimGrants`        | Builder claims rewards for an approved program                       |
-| `reclaimFunds`       | Program creator reclaims funds from an expired, unapproved program   |
-| `updateValidator`    | Updates the validator for the program                                |
-| `setFee / getFee`    | Sets and retrieves the platform fee                                  |
+| `submitProposal`     | Builder submits a project proposal with milestones                   |
+| `evaluateProposal`   | Validator selects or rejects the submitted proposal                  |
+| `submitMilestone`    | Builder submits the results for a milestone                          |
+| `approveMilestone`   | Validator approves the milestone and sends the reward                |
+| `reclaimFunds`       | Program creator reclaims funds if the program expired without approval |
+| `updateValidator`    | Updates the validator address for the program                        |
+| `setFee / getFee`    | Sets and retrieves platform fee in basis points                     |
 
 ![LdEduProgram Flow](./ludimSturcture.jpg)
 
@@ -110,10 +124,12 @@ struct EduProgram {
 
 ### 주요 이벤트
 | 이벤트 | 설명 |
-|------|------|
-|ProgramCreated	|   프로그램이 생성될 때 발생
-|ProgramApproved|	벨리데이터가 승인할 때 발생
-|ProgramClaimed	|   빌더가 보상을 받을 때 발생
+|--------|------|
+| `ProgramCreated` | 프로그램 생성 시 발생 |
+| `ProposalSubmitted` | 제안서 제출 시 발생 |
+| `ProgramApproved` | 제안서가 선택되었을 때 발생 |
+| `MilestoneSubmitted` | 마일스톤 결과 제출 시 발생 |
+| `MilestoneApproved` | 마일스톤 승인 및 보상 지급 시 발생 |
 
 
 
@@ -127,6 +143,18 @@ node test-contract.js approve 0
 
 # 그랜츠 청구 (ID 지정)
 node test-contract.js claim 0
+
+# Proposal 제출
+node test-contract.js submit-proposal <programId>
+
+# Proposal 선택
+node test-contract.js evaluate <programId> <proposalId>
+
+# 마일스톤 제출
+node test-contract.js submit-milestone <programId> <milestoneId>
+
+# 마일스톤 승인
+node test-contract.js approve-milestone <programId> <milestoneId>
 
 # 프로그램 정보 조회 (ID 지정)
 node test-contract.js info 0
