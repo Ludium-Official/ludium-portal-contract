@@ -93,7 +93,7 @@ ludium-portal-contract/
 | `updateValidator`    | Updates the validator address for the program                        |
 | `setFee / getFee`    | Sets and retrieves platform fee in basis points                     |
 
-![LdEduProgram Flow](./ludimSturcture.jpg)
+![LdEduProgram Flow](./ludium_structure.jpg)
 
 ## 📖 사용법
 

@@ -14,10 +14,28 @@ const {
 
 // ABI 파일 로드
 const contractABI = JSON.parse(fs.readFileSync('./abi/LdEduProgram.json', 'utf8')).abi;
+const factoryJson = JSON.parse(fs.readFileSync('./abi/LdEduProgramFactory.json', 'utf8'));
+const factoryABI = factoryJson.abi;
+const factoryBytecode = factoryJson.bytecode;
 
 // 프로바이더와 사이너 설정 (ethers v5 문법)
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+
+// 팩토리 생성
+async function deployFactory() {
+  console.log("🚀 팩토리 컨트랙트 배포 중...");
+
+  const factory = new ethers.ContractFactory(factoryABI, factoryBytecode, wallet);
+  const contract = await factory.deploy({
+    gasLimit: 1000000
+  });
+  await contract.deployed();
+
+  console.log("✅ 배포 완료! 팩토리 주소:");
+  console.log(contract.address);
+}
+deployFactory().catch(console.error);
 
 // 컨트랙트 인스턴스 생성
 const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, wallet);
