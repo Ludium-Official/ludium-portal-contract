@@ -23,32 +23,27 @@ npm install
 **🚀 Quick Start**
 
 ```
-# 프로그램 생성
+# Deploy the contract
+node test-contract.js deploy
+
+# Create a new program
 node test-contract.js create
 
-# Proposal 제출
-node test-contract.js submit-proposal <programId>
+# Builder submits an application
+node test-contract.js submit-application <programId>
 
-# Proposal 선택
-node test-contract.js evaluate <programId> <proposalId>
+# Validator selects builder
+node test-contract.js select <programId> <applicationId>
 
-# 마일스톤 제출
+# Builder submits milestone
 node test-contract.js submit-milestone <programId> <milestoneId>
 
-# 마일스톤 승인
+# Validator approves milestone (reward sent)
 node test-contract.js approve-milestone <programId> <milestoneId>
 
-# 승인 (ID 지정)
-node test-contract.js approve 0
-
-# 보상 청구
-node test-contract.js claim 0
-
-# 정보 조회
-node test-contract.js info 0
-
-# 전체 흐름 테스트
+# Run end-to-end test
 node test-contract.js all
+
 ```
 
 ## 📂 Directory Structure
@@ -64,6 +59,7 @@ ludium-portal-contract/
 ├── .gitignore
 ├── package.json
 ├── package-lock.json
+├── env
 ├── README.md                        # 프로젝트 설명서
 └── test-contract.js                 # 테스트 및 실행 스크립트
 ```
@@ -82,16 +78,19 @@ ludium-portal-contract/
 
 ---
 
-| Function             | Description                                                           |
-|----------------------|-----------------------------------------------------------------------|
-| `createEduProgram`   | Creates a new education program                                       |
-| `submitProposal`     | Builder submits a project proposal with milestones                   |
-| `evaluateProposal`   | Validator selects or rejects the submitted proposal                  |
-| `submitMilestone`    | Builder submits the results for a milestone                          |
-| `approveMilestone`   | Validator approves the milestone and sends the reward                |
-| `reclaimFunds`       | Program creator reclaims funds if the program expired without approval |
-| `updateValidator`    | Updates the validator address for the program                        |
-| `setFee / getFee`    | Sets and retrieves platform fee in basis points                     |
+📌 Contract Overview
+
+Function	Description
+createEduProgram	Create a new program with funding
+submitApplication	Builder submits application with milestone plan
+selectApplication	Validator selects a builder to execute the program
+submitMilestone	Builder submits milestone result
+acceptMilestone	Validator approves milestone and transfers reward
+rejectMilestone	Validator rejects a milestone
+reclaimFunds	Creator reclaims funds if program expired without approval
+updateProgram	Modify program configuration
+getMilestones	Fetch all milestones of a program
+setFee / getFee	Set or retrieve platform fee
 
 ![LdEduProgram Flow](./ludium_structure.jpg)
 
@@ -121,15 +120,6 @@ struct EduProgram {
 
 ```
 
-
-### 주요 이벤트
-| 이벤트 | 설명 |
-|--------|------|
-| `ProgramCreated` | 프로그램 생성 시 발생 |
-| `ProposalSubmitted` | 제안서 제출 시 발생 |
-| `ProgramApproved` | 제안서가 선택되었을 때 발생 |
-| `MilestoneSubmitted` | 마일스톤 결과 제출 시 발생 |
-| `MilestoneApproved` | 마일스톤 승인 및 보상 지급 시 발생 |
 
 
 

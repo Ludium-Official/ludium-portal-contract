@@ -11,6 +11,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     event SelectedApplication(uint256 indexed programId, uint256 applicationId, address builder);
     event MilestoneSubmitted(uint256 indexed id, uint256 milestoneId, string[] links);
     event MilestoneAccepted(uint256 indexed id, uint256 milestoneId, uint256 reward);
+    event MilestoneRejected(uint256 indexed id, uint256 milestoneId);
     event ProgramClaimed(uint256 indexed id, address builder, uint256 amount);
     event FundsReclaimed(uint256 indexed id, address maker, uint256 amount);
     event ProgramEdited(uint256 programId, uint256 price, uint256 startTime, uint256 endTime, address newValidator);
@@ -43,21 +44,21 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     }
 
     enum ApplicationStatus { Applied, Denied, Selected }
+    enum MilestoneStatus { NotSubmitted, Submitted, Accepted, Rejected }
 
     struct Milestone {
         uint256 id;
         string name;
         string description;
         uint256 price;
-        bool submitted;
-        bool approved;
-        bool claimed;
+        MilestoneStatus status;
         string[] links;
     }
 
     mapping(uint256 => EduProgram) public eduPrograms;
     mapping(uint256 => Application[]) public programApplications;
-    mapping(uint256 => Milestone[]) public programMilestones;
+    mapping(uint256 => mapping(uint256 => Milestone)) public programMilestones;
+    mapping(uint256 => uint256[]) public milestoneIds;
     mapping(uint256 => uint256) public selectedApplicationIndex;
     mapping(uint256 => uint256) public nextApplicationId;
     mapping(uint256 => uint256) public nextMilestoneId;
@@ -82,7 +83,8 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     ) external payable {
         require(msg.value == _price, "The ETH sent does not match the program price");
         require(_startTime < _endTime, "The Start time must be earlier than the end time.");
-        uint256 programId = nextProgramId;
+
+        uint256 programId = nextProgramId++;
 
         eduPrograms[programId] = EduProgram({
             id: programId,
@@ -100,15 +102,16 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
             claimed: false,
             builder: address(0)
         });
-        nextProgramId++;
+
         emit ProgramCreated(programId, msg.sender, _validator, _price);
     }
 
     function approveProgram(uint256 programId) external {
         EduProgram storage program = eduPrograms[programId];
-        require(msg.sender == program.validator, "You don't have approval permissions.");
-        require(block.timestamp <= program.endTime, "The program has already ended.");
-        require(!program.approve, "Already approved.");
+        require(msg.sender == program.validator, "Not validator");
+        require(block.timestamp <= program.endTime, "Program ended");
+        require(!program.approve, "Already approved");
+
         program.approve = true;
         emit ProgramApproved(programId);
     }
@@ -165,38 +168,41 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
                     for (uint256 j = 0; j < app.milestoneNames.length; j++) {
                         uint256 milestoneId = nextMilestoneId[programId]++;
-                        programMilestones[programId].push(Milestone({
+                        programMilestones[programId][milestoneId] = Milestone({
                             id: milestoneId,
                             name: app.milestoneNames[j],
                             description: app.milestoneDescriptions[j],
                             price: app.milestonePrices[j],
-                            submitted: false,
-                            approved: false,
-                            claimed: false,
+                            status: MilestoneStatus.NotSubmitted,
                             links: new string[](0)
-                        }));
+                        });
+                        milestoneIds[programId].push(milestoneId);
                     }
+
                     emit SelectedApplication(programId, applicationId, app.builder);
                 } else {
                     app.status = ApplicationStatus.Denied;
                 }
+
                 found = true;
                 break;
             }
         }
-        require(found, "Proposal ID not found");
+
+        require(found, "Application not found");
     }
 
     function submitMilestone(uint256 programId, uint256 milestoneId, string[] calldata links) external {
         EduProgram storage program = eduPrograms[programId];
-        require(program.approve, "Not approved");
-        require(msg.sender == program.builder, "Not selected builder");
+        require(program.approve, "Program not approved");
+        require(msg.sender == program.builder, "Not builder");
 
         Milestone storage m = programMilestones[programId][milestoneId];
-        require(!m.submitted, "Already submitted");
+        require(m.status == MilestoneStatus.NotSubmitted, "Already submitted");
 
-        m.submitted = true;
+        m.status = MilestoneStatus.Submitted;
         m.links = links;
+
         emit MilestoneSubmitted(programId, milestoneId, links);
     }
 
@@ -205,11 +211,9 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         require(msg.sender == program.validator, "Not validator");
 
         Milestone storage m = programMilestones[programId][milestoneId];
-        require(m.submitted, "Not submitted");
-        require(!m.approved && !m.claimed, "Already handled");
+        require(m.status == MilestoneStatus.Submitted, "Invalid status");
 
-        m.approved = true;
-        m.claimed = true;
+        m.status = MilestoneStatus.Accepted;
 
         (bool sent, ) = payable(program.builder).call{value: m.price}("");
         require(sent, "ETH transfer failed");
@@ -218,12 +222,24 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         emit ProgramClaimed(programId, program.builder, m.price);
     }
 
+    function rejectMilestone(uint256 programId, uint256 milestoneId) external {
+        EduProgram storage program = eduPrograms[programId];
+        require(msg.sender == program.validator, "Not validator");
+
+        Milestone storage m = programMilestones[programId][milestoneId];
+        require(m.status == MilestoneStatus.Submitted, "Invalid status");
+
+        m.status = MilestoneStatus.Rejected;
+
+        emit MilestoneRejected(programId, milestoneId);
+    }
+
     function reclaimFunds(uint256 programId) external nonReentrant {
         EduProgram storage program = eduPrograms[programId];
-        require(!program.approve, "It's already been approved and can't be reclaimed.");
-        require(!program.claimed, "Already taken care of.");
-        require(block.timestamp > program.endTime, "The program hasn't ended yet.");
-        require(msg.sender == program.maker, "You don't have reclamation rights.");
+        require(!program.approve, "Already approved");
+        require(!program.claimed, "Already claimed");
+        require(block.timestamp > program.endTime, "Program not ended yet");
+        require(msg.sender == program.maker, "Not the program maker");
 
         program.claimed = true;
         payable(program.maker).transfer(program.price);
@@ -239,9 +255,9 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         address newValidator
     ) external {
         EduProgram storage program = eduPrograms[programId];
-        require(msg.sender == program.maker, "Only creators can edit the program.");
-        require(startTime < endTime, "Start time must be before end time.");
-        require(price > 0, "Price must be positive.");
+        require(msg.sender == program.maker, "Only creator");
+        require(startTime < endTime, "Invalid time");
+        require(price > 0, "Invalid price");
 
         program.price = price;
         program.startTime = startTime;
@@ -258,5 +274,14 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     function getFee() external view returns (uint256) {
         return fee;
+    }
+
+    function getMilestones(uint256 programId) external view returns (Milestone[] memory) {
+        uint256[] memory ids = milestoneIds[programId];
+        Milestone[] memory result = new Milestone[](ids.length);
+        for (uint256 i = 0; i < ids.length; i++) {
+            result[i] = programMilestones[programId][ids[i]];
+        }
+        return result;
     }
 }
