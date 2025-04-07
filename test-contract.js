@@ -42,18 +42,15 @@ const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, wallet);
 async function createProgram() {
   try {
     console.log("📝 프로그램 생성 중...");
-
     const programName = "교육 프로그램 테스트";
     const price = ethers.utils.parseEther("0.001"); // 0.001 EDU
     const startTime = Math.floor(Date.now() / 1000) + 60; // 1분 후 시작
     const endTime = startTime + 3600; // 1시간 후 종료
-    
     console.log(`이름: ${programName}`);
     console.log(`가격: ${ethers.utils.formatEther(price)} EDU`);
     console.log(`시작: ${new Date(startTime * 1000).toLocaleString()}`);
     console.log(`종료: ${new Date(endTime * 1000).toLocaleString()}`);
     console.log(`벨리데이터: ${VALIDATOR_ADDRESS}`);
-
     const tx = await contract.createEduProgram(
       programName,
       price,
@@ -62,7 +59,6 @@ async function createProgram() {
       VALIDATOR_ADDRESS,
       { value: price }
     );
-
     console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);
     const receipt = await tx.wait();
     
@@ -101,43 +97,9 @@ async function approveProgram(programId) {
   }
 }
 
-// 빌더가 Proposal 제출
-async function submitProposal(programId) {
-  const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
-  const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
-
-  const milestoneNames = ["1단계", "2단계"];
-  const milestoneDescriptions = ["기초 개발", "배포 완료"];
-  const milestonePrices = [
-    ethers.utils.parseEther("0.005"),
-    ethers.utils.parseEther("0.005"),
-  ];
-
-  const tx = await builderContract.submitProposal(
-    programId,
-    milestoneNames,
-    milestoneDescriptions,
-    milestonePrices
-  );
-
-  const receipt = await tx.wait();
-  const event = receipt.events.find(e => e.event === 'ProposalSubmitted');
-  const proposalId = event.args.proposalId.toNumber();
-
-  console.log(`✅ Proposal 제출 완료 - ID: ${proposalId}`);
-  return proposalId;
-}
-// Validator가 Proposal 선택
-async function evaluateProposal(programId, proposalId) {
-  const tx = await contract.evaluateProposal(programId, proposalId, true);
-  await tx.wait();
-  console.log(`🔎 Proposal 선택 완료 (programId: ${programId}, proposalId: ${proposalId})`);
-}
 
 // Builder가 마일스톤 제출
 async function submitApplication(programId) {
-  const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
-  const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
 
   const milestoneNames = ["1단계", "2단계"];
   const milestoneDescriptions = ["기초 개발", "배포 완료"];
@@ -146,7 +108,7 @@ async function submitApplication(programId) {
     ethers.utils.parseEther("0.005"),
   ];
 
-  const tx = await builderContract.submitApplication(
+  const tx = await contract.submitApplication(
     programId,
     milestoneNames,
     milestoneDescriptions,
