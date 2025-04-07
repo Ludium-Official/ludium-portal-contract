@@ -7,7 +7,7 @@ const {
   RPC_URL,
   PRIVATE_KEY,
   CONTRACT_ADDRESS,
-  VALIDATOR_ADDRESS,
+  VALIDATOR_ADDRESS, 
   BUILDER_ADDRESS,
   BUILDER_PRIVATE_KEY
 } = process.env;
@@ -19,6 +19,22 @@ const contractABI = JSON.parse(fs.readFileSync('./abi/LdEduProgram.json', 'utf8'
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
+// 팩토리 생성
+async function deployProgramContract() {
+  console.log("🚀 팩토리 컨트랙트 배포 중...");
+
+  const bytecode = JSON.parse(fs.readFileSync('./abi/LdEduProgram.json', 'utf8')).bytecode;
+  const factory = new ethers.ContractFactory(contractABI, bytecode, wallet);
+  const contract = await factory.deploy(wallet.address);
+  await contract.deployed();
+
+  console.log("✅ 배포 완료!");
+  console.log(`📍 컨트랙트 주소: ${contract.address}`);
+
+  return contract.address;
+}
+
+
 // 컨트랙트 인스턴스 생성
 const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, wallet);
 
@@ -26,14 +42,17 @@ const contract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, wallet);
 async function createProgram() {
   try {
     console.log("📝 프로그램 생성 중...");
-
     const programName = "교육 프로그램 테스트";
-    const price = ethers.utils.parseEther("0.001"); // 0.001 EDU
-    const startTime = Math.floor(Date.now() / 1000) + 60; // 1분 후 시작
-    const endTime = startTime + 3600; // 1시간 후 종료
-    
+    const keywords = "AI, 교육";
+    const summary = "요약 설명입니다.";
+    const description = "이것은 긴 설명입니다.";
+    const links = ["https://example.com"];
+    const price = ethers.utils.parseEther("0.01");
+    const startTime = Math.floor(Date.now() / 1000) + 60; // 시작: 1분 후
+    const endTime = startTime + 3600; // 종료: 1시간 후
+
     console.log(`이름: ${programName}`);
-    console.log(`가격: ${ethers.utils.formatEther(price)} EDU`);
+    console.log(`가격: ${ethers.utils.formatEther(price)} ETH`);
     console.log(`시작: ${new Date(startTime * 1000).toLocaleString()}`);
     console.log(`종료: ${new Date(endTime * 1000).toLocaleString()}`);
     console.log(`벨리데이터: ${VALIDATOR_ADDRESS}`);
@@ -41,12 +60,15 @@ async function createProgram() {
     const tx = await contract.createEduProgram(
       programName,
       price,
+      keywords,
       startTime,
       endTime,
       VALIDATOR_ADDRESS,
+      summary,
+      description,
+      links,
       { value: price }
     );
-
     console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);
     const receipt = await tx.wait();
     
@@ -84,6 +106,107 @@ async function approveProgram(programId) {
     throw error;
   }
 }
+
+
+// Builder가 마일스톤 제출
+async function submitApplication(programId) {
+
+  const milestoneNames = ["1단계", "2단계"];
+  const milestoneDescriptions = ["기초 개발", "배포 완료"];
+  const milestonePrices = [
+    ethers.utils.parseEther("0.005"),
+    ethers.utils.parseEther("0.005"),
+  ];
+
+  const tx = await contract.submitApplication(
+    programId,
+    milestoneNames,
+    milestoneDescriptions,
+    milestonePrices
+  );
+
+  const receipt = await tx.wait();
+  const event = receipt.events.find(e => e.event === 'ProgramApplied');
+  const applicationId = event.args.id.toNumber();
+
+  console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
+  return applicationId;
+}
+
+
+// 프로그램 정보 조회
+async function getProgramInfo(programId) {
+  try {
+    console.log(`\n🔍 프로그램 정보 조회 중... (ID: ${programId})`);
+    
+    const program = await contract.eduPrograms(programId);
+    
+    console.log("\n📋 프로그램 정보:");
+    console.log(`ID: ${program.id.toString()}`);
+    console.log(`이름: ${program.name}`);
+    console.log(`가격: ${ethers.utils.formatEther(program.price)} EDU`);
+    console.log(`시작: ${new Date(program.startTime.toNumber() * 1000).toLocaleString()}`);
+    console.log(`종료: ${new Date(program.endTime.toNumber() * 1000).toLocaleString()}`);
+    console.log(`생성자: ${program.maker}`);
+    console.log(`벨리데이터: ${program.validator}`);
+    console.log(`승인 여부: ${program.approve ? '승인됨' : '미승인'}`);
+    console.log(`청구 여부: ${program.claimed ? '청구됨' : '미청구'}`);
+    console.log(`빌더: ${program.builder === '0x0000000000000000000000000000000000000000' ? '없음' : program.builder}`);
+    
+    return program;
+  } catch (error) {
+    console.error("❌ 프로그램 정보 조회 실패:", error.message);
+    throw error;
+  }
+}
+
+async function submitApplication(programId) {
+  const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
+  const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
+
+  const milestoneNames = ["1단계", "2단계"];
+  const milestoneDescriptions = ["개발", "배포"];
+  const milestonePrices = [
+    ethers.utils.parseEther("0.005"),
+    ethers.utils.parseEther("0.005")
+  ];
+
+  const tx = await builderContract.submitApplication(
+    programId,
+    milestoneNames,
+    milestoneDescriptions,
+    milestonePrices
+  );
+
+  const receipt = await tx.wait();
+  const event = receipt.events.find(e => e.event === 'ProgramApplied');
+  const applicationId = event.args.id.toNumber();
+
+  console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
+  return applicationId;
+}
+
+async function selectApplication(programId, applicationId) {
+  const tx = await contract.selectApplication(programId, applicationId, true);
+  await tx.wait();
+  console.log(`🔎 Application 선택 완료 (programId: ${programId}, applicationId: ${applicationId})`);
+}
+
+async function submitMilestone(programId, milestoneId, links) {
+  const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
+  const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
+
+  const tx = await builderContract.submitMilestone(programId, milestoneId, links);
+  await tx.wait();
+  console.log(`📝 마일스톤 제출 완료 (programId: ${programId}, milestoneId: ${milestoneId})`);
+}
+
+async function acceptMilestone(programId, milestoneId) {
+  const tx = await contract.acceptMilestone(programId, milestoneId);
+  await tx.wait();
+  console.log(`✅ 마일스톤 승인 완료 (보상 전송 포함)`);
+}
+
 // 그랜츠 청구 함수 (주요 수정 부분)
 async function claimGrants(programId) {
   try {
@@ -168,106 +291,83 @@ async function claimGrants(programId) {
   }
 }
 
-
-// 프로그램 정보 조회
-async function getProgramInfo(programId) {
-  try {
-    console.log(`\n🔍 프로그램 정보 조회 중... (ID: ${programId})`);
-    
-    const program = await contract.eduPrograms(programId);
-    
-    console.log("\n📋 프로그램 정보:");
-    console.log(`ID: ${program.id.toString()}`);
-    console.log(`이름: ${program.name}`);
-    console.log(`가격: ${ethers.utils.formatEther(program.price)} EDU`);
-    console.log(`시작: ${new Date(program.startTime.toNumber() * 1000).toLocaleString()}`);
-    console.log(`종료: ${new Date(program.endTime.toNumber() * 1000).toLocaleString()}`);
-    console.log(`생성자: ${program.maker}`);
-    console.log(`벨리데이터: ${program.validator}`);
-    console.log(`승인 여부: ${program.approve ? '승인됨' : '미승인'}`);
-    console.log(`청구 여부: ${program.claimed ? '청구됨' : '미청구'}`);
-    console.log(`빌더: ${program.builder === '0x0000000000000000000000000000000000000000' ? '없음' : program.builder}`);
-    
-    return program;
-  } catch (error) {
-    console.error("❌ 프로그램 정보 조회 실패:", error.message);
-    throw error;
-  }
-}
-
 // 명령행 인자 처리 및 테스트 실행
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
   const programId = args[1] ? parseInt(args[1]) : undefined;
+  const applicationId = args[2] ? parseInt(args[2]) : undefined;
+  const milestoneId = args[3] ? parseInt(args[3]) : undefined;
 
   try {
     switch (command) {
+      case 'deploy':
+        await deployProgramContract();
+        break;
+
       case 'create':
         await createProgram();
         break;
-      
+
       case 'approve':
-        if (!programId && programId !== 0) {
-          console.error("❌ 프로그램 ID를 지정해주세요: node test-contract.js approve PROGRAM_ID");
-          process.exit(1);
-        }
         await approveProgram(programId);
         break;
-      
-      case 'claim':
-        if (!programId && programId !== 0) {
-          console.error("❌ 프로그램 ID를 지정해주세요: node test-contract.js claim PROGRAM_ID");
-          process.exit(1);
-        }
-        await claimGrants(programId);
+
+      case 'submit-application':
+        if (!programId) throw new Error("Program ID 필요");
+        await submitApplication(programId);
         break;
-      
+
+      case 'select':
+        if (!programId || applicationId === undefined) throw new Error("Program ID, Application ID 필요");
+        await selectApplication(programId, applicationId);
+        break;
+
+      case 'submit-milestone':
+        if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
+        await submitMilestone(programId, milestoneId, ["https://link.to/milestone"]);
+        break;
+
+      case 'accept-milestone':
+        if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
+        await acceptMilestone(programId, milestoneId);
+        break;
+
       case 'info':
-        if (!programId && programId !== 0) {
-          console.error("❌ 프로그램 ID를 지정해주세요: node test-contract.js info PROGRAM_ID");
-          process.exit(1);
-        }
+        if (!programId) throw new Error("Program ID 필요");
         await getProgramInfo(programId);
         break;
-      
+
       case 'all':
-        if (programId) {
-          // 기존 프로그램 ID로 전체 프로세스 테스트
-          await getProgramInfo(programId);
-          await approveProgram(programId);
-          await getProgramInfo(programId);
-          await claimGrants(programId);
-          await getProgramInfo(programId);
-        } else {
-          // 새 프로그램 생성부터 전체 프로세스 테스트
-          const newProgramId = await createProgram();
-          if (newProgramId !== null) {
-            await getProgramInfo(newProgramId);
-            await approveProgram(newProgramId);
-            await getProgramInfo(newProgramId);
-            await claimGrants(newProgramId);
-            await getProgramInfo(newProgramId);
-          }
-        }
+        const pid = await createProgram();
+        const appId = await submitApplication(pid);
+        await selectApplication(pid, appId);
+        await submitMilestone(pid, 0, ["https://link1"]);
+        await acceptMilestone(pid, 0);
+        await submitMilestone(pid, 1, ["https://link2"]);
+        await acceptMilestone(pid, 1);
+        await getProgramInfo(pid);
         break;
-      
+
       default:
         console.log(`
-사용법: node test-contract.js <command> [programId]
+사용법: node test.js <command> [programId] [applicationId] [milestoneId]
 
 명령어:
-  create              새 교육 프로그램 생성
-  approve <programId> 프로그램 승인 및 빌더 지정
-  claim <programId>   그랜츠 청구
-  info <programId>    프로그램 정보 조회
-  all [programId]     전체 프로세스 테스트 (ID 없으면 새로 생성)
-        `);
+  deploy                                컨트랙트 배포
+  create                                프로그램 생성
+  approve <programId>                   프로그램 승인
+  submit-application <programId>        지원서 제출
+  select <programId> <applicationId>    지원서 선택
+  submit-milestone <programId> <id>     마일스톤 제출
+  accept-milestone <programId> <id>    마일스톤 승인
+  info <programId>                      프로그램 정보 조회
+  all                                   전체 흐름 테스트
+`);
     }
-  } catch (error) {
-    console.error("❌ 테스트 실패:", error);
-    process.exit(1);
+  } catch (err) {
+    console.error("❌ 오류:", err.message);
   }
 }
 
-main().catch(console.error);
+main();
