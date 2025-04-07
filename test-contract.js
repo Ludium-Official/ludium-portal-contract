@@ -371,7 +371,7 @@ async function main() {
         const appId = await submitApplication(pid);
         await selectApplication(pid, appId);
         await submitMilestone(pid, 0, ["https://link1"]);
-        await approveMilestone(pid, 0);
+        await acceptMilestone(pid, 0);
         await submitMilestone(pid, 1, ["https://link2"]);
         await acceptMilestone(pid, 1);
         await getProgramInfo(pid);
@@ -388,7 +388,7 @@ async function main() {
   submit-application <programId>        지원서 제출
   select <programId> <applicationId>    지원서 선택
   submit-milestone <programId> <id>     마일스톤 제출
-  approve-milestone <programId> <id>    마일스톤 승인
+  accept-milestone <programId> <id>    마일스톤 승인
   info <programId>                      프로그램 정보 조회
   all                                   전체 흐름 테스트
 `);

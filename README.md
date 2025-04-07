@@ -121,8 +121,6 @@ struct EduProgram {
 ```
 
 
-
-
 ### Test
 ```
 # 프로그램 생성
@@ -131,20 +129,17 @@ node test-contract.js create
 # 프로그램 승인 (ID 지정)
 node test-contract.js approve 0
 
-# 그랜츠 청구 (ID 지정)
-node test-contract.js claim 0
+# Application 제출
+node test-contract.js submit-application <programId>
 
-# Proposal 제출
-node test-contract.js submit-proposal <programId>
-
-# Proposal 선택
-node test-contract.js evaluate <programId> <proposalId>
+# application 선택 
+node test-contract.js select <programId> <proposalId>
 
 # 마일스톤 제출
 node test-contract.js submit-milestone <programId> <milestoneId>
 
 # 마일스톤 승인
-node test-contract.js approve-milestone <programId> <milestoneId>
+node test-contract.js accept-milestone <programId> <milestoneId>
 
 # 프로그램 정보 조회 (ID 지정)
 node test-contract.js info 0
