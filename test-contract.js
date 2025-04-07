@@ -23,7 +23,7 @@ const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 async function deployProgramContract() {
   console.log("🚀 팩토리 컨트랙트 배포 중...");
 
-  const bytecode = JSON.parse(fs.readFileSync('./abi/LdEduProgram.json', 'utf8')).data.bytecode.object;
+  const bytecode = JSON.parse(fs.readFileSync('./abi/LdEduProgram.json', 'utf8')).bytecode;
   const factory = new ethers.ContractFactory(contractABI, bytecode, wallet);
   const contract = await factory.deploy(wallet.address);
   await contract.deployed();
@@ -43,20 +43,30 @@ async function createProgram() {
   try {
     console.log("📝 프로그램 생성 중...");
     const programName = "교육 프로그램 테스트";
-    const price = ethers.utils.parseEther("0.001"); // 0.001 EDU
-    const startTime = Math.floor(Date.now() / 1000) + 60; // 1분 후 시작
-    const endTime = startTime + 3600; // 1시간 후 종료
+    const keywords = "AI, 교육";
+    const summary = "요약 설명입니다.";
+    const description = "이것은 긴 설명입니다.";
+    const links = ["https://example.com"];
+    const price = ethers.utils.parseEther("0.01");
+    const startTime = Math.floor(Date.now() / 1000) + 60; // 시작: 1분 후
+    const endTime = startTime + 3600; // 종료: 1시간 후
+
     console.log(`이름: ${programName}`);
-    console.log(`가격: ${ethers.utils.formatEther(price)} EDU`);
+    console.log(`가격: ${ethers.utils.formatEther(price)} ETH`);
     console.log(`시작: ${new Date(startTime * 1000).toLocaleString()}`);
     console.log(`종료: ${new Date(endTime * 1000).toLocaleString()}`);
     console.log(`벨리데이터: ${VALIDATOR_ADDRESS}`);
+
     const tx = await contract.createEduProgram(
       programName,
       price,
+      keywords,
       startTime,
       endTime,
       VALIDATOR_ADDRESS,
+      summary,
+      description,
+      links,
       { value: price }
     );
     console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);

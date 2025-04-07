@@ -67,8 +67,9 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     uint256 private fee;
 
     constructor(address initialOwner) Ownable() {
-        _transferOwnership(initialOwner);
+    _transferOwnership(initialOwner);
     }
+
 
     function createEduProgram(
         string memory _name,
@@ -84,7 +85,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         require(msg.value == _price, "The ETH sent does not match the program price");
         require(_startTime < _endTime, "The Start time must be earlier than the end time.");
 
-        uint256 programId = nextProgramId++;
+        uint256 programId = nextProgramId;
 
         eduPrograms[programId] = EduProgram({
             id: programId,
@@ -102,7 +103,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
             claimed: false,
             builder: address(0)
         });
-
+        nextProgramId++;
         emit ProgramCreated(programId, msg.sender, _validator, _price);
     }
 
