@@ -108,39 +108,103 @@ async function approveProgram(programId) {
 }
 
 
-// Builder가 마일스톤 제출
 async function submitApplication(programId) {
+  try {
+    console.log(`📨 Application 제출 중... (programId: ${programId})`);
 
-  const milestoneNames = ["1단계", "2단계"];
-  const milestoneDescriptions = ["기초 개발", "배포 완료"];
-  const milestonePrices = [
-    ethers.utils.parseEther("0.005"),
-    ethers.utils.parseEther("0.005"),
-  ];
+    const milestoneNames = ["1단계", "2단계"];
+    const milestoneDescriptions = ["기초 개발", "배포 완료"];
+    const milestonePrices = [
+      ethers.utils.parseEther("0.005"),
+      ethers.utils.parseEther("0.005"),
+    ];
 
-  const tx = await contract.submitApplication(
-    programId,
-    milestoneNames,
-    milestoneDescriptions,
-    milestonePrices
-  );
+    const tx = await contract.submitApplication(
+      programId,
+      milestoneNames,
+      milestoneDescriptions,
+      milestonePrices
+    );
 
-  const receipt = await tx.wait();
-  const event = receipt.events.find(e => e.event === 'ProgramApplied');
-  const applicationId = event.args.id.toNumber();
+    const receipt = await tx.wait();
+    const event = receipt.events.find(e => e.event === 'ProgramApplied');
+    const applicationId = event.args.id.toNumber();
 
-  console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
-  return applicationId;
+    console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
+    return applicationId;
+  } catch (error) {
+    console.error("❌ Application 제출 실패:", error.message);
+    throw error;
+  }
 }
 
+async function selectApplication(programId, applicationId) {
+  try {
+    console.log(`📥 Application 선택 중... (programId: ${programId}, applicationId: ${applicationId})`);
 
-// 프로그램 정보 조회
+    const tx = await contract.selectApplication(programId, applicationId, true);
+    const receipt = await tx.wait();
+
+    const event = receipt.events.find(e => e.event === "ApplicationSelected");
+    if (!event) throw new Error("ApplicationSelected 이벤트를 찾을 수 없습니다.");
+
+    const milestoneIds = event.args.milestoneIds.map(id => id.toNumber());
+
+    console.log(`✅ Application 선택 완료`);
+    console.log(`📌 생성된 마일스톤 ID들:`, milestoneIds);
+
+    return milestoneIds;
+  } catch (error) {
+    console.error("❌ Application 선택 실패:", error.message);
+    throw error;
+  }
+}
+
+async function submitMilestone(programId, milestoneId, links) {
+  try {
+    const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
+    const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
+
+    const tx = await builderContract.submitMilestone(programId, milestoneId, links);
+    await tx.wait();
+
+    console.log(`📝 마일스톤 제출 완료 (programId: ${programId}, milestoneId: ${milestoneId})`);
+  } catch (error) {
+    console.error("❌ 마일스톤 제출 실패:", error.message);
+    throw error;
+  }
+}
+
+async function acceptMilestone(programId, milestoneId) {
+  try {
+    const tx = await contract.acceptMilestone(programId, milestoneId);
+    await tx.wait();
+
+    console.log(`✅ 마일스톤 승인 완료 (보상 전송 포함)`);
+  } catch (error) {
+    console.error("❌ 마일스톤 승인 실패:", error.message);
+    throw error;
+  }
+}
+
+async function rejectMilestone(programId, milestoneId) {
+  try {
+    const tx = await contract.rejectMilestone(programId, milestoneId);
+    await tx.wait();
+
+    console.log(`❌ 마일스톤 거절 완료`);
+  } catch (error) {
+    console.error("❌ 마일스톤 거절 실패:", error.message);
+    throw error;
+  }
+}
+
 async function getProgramInfo(programId) {
   try {
     console.log(`\n🔍 프로그램 정보 조회 중... (ID: ${programId})`);
-    
+
     const program = await contract.eduPrograms(programId);
-    
+
     console.log("\n📋 프로그램 정보:");
     console.log(`ID: ${program.id.toString()}`);
     console.log(`이름: ${program.name}`);
@@ -152,59 +216,12 @@ async function getProgramInfo(programId) {
     console.log(`승인 여부: ${program.approve ? '승인됨' : '미승인'}`);
     console.log(`청구 여부: ${program.claimed ? '청구됨' : '미청구'}`);
     console.log(`빌더: ${program.builder === '0x0000000000000000000000000000000000000000' ? '없음' : program.builder}`);
-    
+
     return program;
   } catch (error) {
     console.error("❌ 프로그램 정보 조회 실패:", error.message);
     throw error;
   }
-}
-
-async function submitApplication(programId) {
-  const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
-  const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
-
-  const milestoneNames = ["1단계", "2단계"];
-  const milestoneDescriptions = ["개발", "배포"];
-  const milestonePrices = [
-    ethers.utils.parseEther("0.005"),
-    ethers.utils.parseEther("0.005")
-  ];
-
-  const tx = await builderContract.submitApplication(
-    programId,
-    milestoneNames,
-    milestoneDescriptions,
-    milestonePrices
-  );
-
-  const receipt = await tx.wait();
-  const event = receipt.events.find(e => e.event === 'ProgramApplied');
-  const applicationId = event.args.id.toNumber();
-
-  console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
-  return applicationId;
-}
-
-async function selectApplication(programId, applicationId) {
-  const tx = await contract.selectApplication(programId, applicationId, true);
-  await tx.wait();
-  console.log(`🔎 Application 선택 완료 (programId: ${programId}, applicationId: ${applicationId})`);
-}
-
-async function submitMilestone(programId, milestoneId, links) {
-  const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
-  const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
-
-  const tx = await builderContract.submitMilestone(programId, milestoneId, links);
-  await tx.wait();
-  console.log(`📝 마일스톤 제출 완료 (programId: ${programId}, milestoneId: ${milestoneId})`);
-}
-
-async function acceptMilestone(programId, milestoneId) {
-  const tx = await contract.acceptMilestone(programId, milestoneId);
-  await tx.wait();
-  console.log(`✅ 마일스톤 승인 완료 (보상 전송 포함)`);
 }
 
 // 그랜츠 청구 함수 (주요 수정 부분)
@@ -318,7 +335,7 @@ async function main() {
         await submitApplication(programId);
         break;
 
-      case 'select':
+      case 'select-application':
         if (!programId || applicationId === undefined) throw new Error("Program ID, Application ID 필요");
         await selectApplication(programId, applicationId);
         break;
@@ -331,6 +348,11 @@ async function main() {
       case 'accept-milestone':
         if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
         await acceptMilestone(programId, milestoneId);
+        break;
+
+      case 'reject-milestone':
+        if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
+        await rejectMilestone(programId, milestoneId);
         break;
 
       case 'info':
@@ -346,6 +368,7 @@ async function main() {
         await acceptMilestone(pid, 0);
         await submitMilestone(pid, 1, ["https://link2"]);
         await acceptMilestone(pid, 1);
+        await rejectMilestone(pid,1);
         await getProgramInfo(pid);
         break;
 
@@ -361,6 +384,7 @@ async function main() {
   select <programId> <applicationId>    지원서 선택
   submit-milestone <programId> <id>     마일스톤 제출
   accept-milestone <programId> <id>    마일스톤 승인
+  reject-milestone <programId> <id>    마일스톤 거절
   info <programId>                      프로그램 정보 조회
   all                                   전체 흐름 테스트
 `);
