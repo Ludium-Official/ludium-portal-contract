@@ -8,7 +8,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
     event ProgramApproved(uint256 indexed programId);
     event ProgramApplied(uint256 indexed id);
-    event SelectedApplication(uint256 indexed programId, uint256 applicationId, address builder);
+    event ApplicationSelected(uint256 indexed programId, uint256 applicationId, address builder,uint256[] milestoneIds);
     event MilestoneSubmitted(uint256 indexed id, uint256 milestoneId, string[] links);
     event MilestoneAccepted(uint256 indexed id, uint256 milestoneId, uint256 reward);
     event MilestoneRejected(uint256 indexed id, uint256 milestoneId);
@@ -166,6 +166,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
                     program.builder = app.builder;
                     program.approve = true;
                     selectedApplicationIndex[programId] = i;
+                    uint256[] memory createdMilestoneIds = new uint256[](app.milestoneNames.length);
 
                     for (uint256 j = 0; j < app.milestoneNames.length; j++) {
                         uint256 milestoneId = nextMilestoneId[programId]++;
@@ -178,9 +179,10 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
                             links: new string[](0)
                         });
                         milestoneIds[programId].push(milestoneId);
+                        createdMilestoneIds[j] = milestoneId;
                     }
 
-                    emit SelectedApplication(programId, applicationId, app.builder);
+                    emit ApplicationSelected(programId, applicationId, app.builder, createdMilestoneIds);
                 } else {
                     app.status = ApplicationStatus.Denied;
                 }
