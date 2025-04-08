@@ -7,7 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 contract LdEduProgram is Ownable, ReentrancyGuard {
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
     event ProgramApproved(uint256 indexed programId);
-    event ProgramApplied(uint256 indexed id);
+    event ProgramApplied(uint256 indexed id, uint256[] milestoneIds);
     event ApplicationSelected(uint256 indexed programId, uint256 applicationId, address builder,uint256[] milestoneIds);
     event MilestoneSubmitted(uint256 indexed id, uint256 milestoneId, string[] links);
     event MilestoneAccepted(uint256 indexed id, uint256 milestoneId, uint256 reward);
@@ -145,7 +145,24 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         });
 
         programApplications[programId].push(a);
-        emit ProgramApplied(applicationId);
+        
+        uint256[] memory createdMilestoneIds = new uint256[](names.length);
+
+        for (uint256 j = 0; j < names.length; j++) {
+            uint256 milestoneId = nextMilestoneId[programId]++;
+            programMilestones[programId][milestoneId] = Milestone({
+                id: milestoneId,
+                name: names[j],
+                description: descriptions[j],
+                price: prices[j],
+                status: MilestoneStatus.NotSubmitted,
+                links: new string[](0)
+        });
+        milestoneIds[programId].push(milestoneId);
+        createdMilestoneIds[j] = milestoneId;
+    }
+
+    emit ProgramApplied(applicationId, createdMilestoneIds);
     }
 
     function selectApplication(uint256 programId, uint256 applicationId, bool isSelected) external {
@@ -166,23 +183,8 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
                     program.builder = app.builder;
                     program.approve = true;
                     selectedApplicationIndex[programId] = i;
-                    uint256[] memory createdMilestoneIds = new uint256[](app.milestoneNames.length);
 
-                    for (uint256 j = 0; j < app.milestoneNames.length; j++) {
-                        uint256 milestoneId = nextMilestoneId[programId]++;
-                        programMilestones[programId][milestoneId] = Milestone({
-                            id: milestoneId,
-                            name: app.milestoneNames[j],
-                            description: app.milestoneDescriptions[j],
-                            price: app.milestonePrices[j],
-                            status: MilestoneStatus.NotSubmitted,
-                            links: new string[](0)
-                        });
-                        milestoneIds[programId].push(milestoneId);
-                        createdMilestoneIds[j] = milestoneId;
-                    }
-
-                    emit ApplicationSelected(programId, applicationId, app.builder, createdMilestoneIds);
+                    emit ApplicationSelected(programId, applicationId, app.builder, milestoneIds[programId]);
                 } else {
                     app.status = ApplicationStatus.Denied;
                 }

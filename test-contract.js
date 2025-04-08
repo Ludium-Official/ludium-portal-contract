@@ -129,9 +129,12 @@ async function submitApplication(programId) {
     const receipt = await tx.wait();
     const event = receipt.events.find(e => e.event === 'ProgramApplied');
     const applicationId = event.args.id.toNumber();
+    const milestoneIds = event.args.milestoneIds.map(id => id.toNumber());
 
     console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
-    return applicationId;
+    console.log(`📌 생성된 마일스톤 ID들:`, milestoneIds);
+    return { applicationId, milestoneIds };
+    
   } catch (error) {
     console.error("❌ Application 제출 실패:", error.message);
     throw error;
