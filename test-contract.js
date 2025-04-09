@@ -52,7 +52,7 @@ async function createProgram() {
     const endTime = startTime + 3600; // 종료: 1시간 후
 
     console.log(`이름: ${programName}`);
-    console.log(`가격: ${ethers.utils.formatEther(price)} ETH`);
+    console.log(`가격: ${ethers.utils.formatEther(price)} EDU`);
     console.log(`시작: ${new Date(startTime * 1000).toLocaleString()}`);
     console.log(`종료: ${new Date(endTime * 1000).toLocaleString()}`);
     console.log(`벨리데이터: ${VALIDATOR_ADDRESS}`);
@@ -71,13 +71,11 @@ async function createProgram() {
     );
     console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);
     const receipt = await tx.wait();
-    
     // 이벤트에서 프로그램 ID 추출
-    const event = receipt.events
-      .find(event => event.event === 'ProgramCreated');
-    
+    const event = receipt.events.find(e => e.event === 'ProgramCreated');
+    console.log("🔥 receipt.events:", receipt.events);
     if (event) {
-      const programId = event.args[0].toString();
+      const programId = event.args.id.toString();
       console.log(`🎉 프로그램 생성 완료! 프로그램 ID: ${programId}`);
       return programId;
     } else {
@@ -97,7 +95,7 @@ async function approveProgram(programId) {
     console.log(`\n🔐 프로그램 승인 중... (ID: ${programId})`);
     console.log(`빌더: ${BUILDER_ADDRESS}`);
 
-    const tx = await contract.approveProgram(programId, BUILDER_ADDRESS);
+    const tx = await contract.approveProgram(programId);
     console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);
     await tx.wait();
     console.log("🎉 프로그램 승인 완료!");
