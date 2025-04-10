@@ -15,6 +15,7 @@ const {
 // ABI 파일 로드
 const contractABI = JSON.parse(fs.readFileSync('./abi/LdEduProgram.json', 'utf8')).abi;
 
+
 // 프로바이더와 사이너 설정 (ethers v5 문법)
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
@@ -47,7 +48,7 @@ async function createProgram() {
     const summary = "요약 설명입니다.";
     const description = "이것은 긴 설명입니다.";
     const links = ["https://example.com"];
-    const price = ethers.utils.parseEther("0.01");
+    const price = ethers.utils.parseEther("0.001");
     const startTime = Math.floor(Date.now() / 1000) + 60; // 시작: 1분 후
     const endTime = startTime + 3600; // 종료: 1시간 후
 
@@ -73,9 +74,8 @@ async function createProgram() {
     const receipt = await tx.wait();
     // 이벤트에서 프로그램 ID 추출
     const event = receipt.events.find(e => e.event === 'ProgramCreated');
-    console.log("🔥 receipt.events:", receipt.events);
     if (event) {
-      const programId = event.args.id.toString();
+      const programId = event.args[0].toString();
       console.log(`🎉 프로그램 생성 완료! 프로그램 ID: ${programId}`);
       return programId;
     } else {
@@ -109,13 +109,14 @@ async function approveProgram(programId) {
 async function submitApplication(programId) {
   try {
     console.log(`📨 Application 제출 중... (programId: ${programId})`);
-
     const milestoneNames = ["1단계", "2단계"];
     const milestoneDescriptions = ["기초 개발", "배포 완료"];
     const milestonePrices = [
-      ethers.utils.parseEther("0.005"),
-      ethers.utils.parseEther("0.005"),
+      ethers.utils.parseEther("0.0001"),
+      ethers.utils.parseEther("0.0001"),
     ];
+
+    console.log(`📨 Milestone 제출 중... (programId: ${programId})`);
 
     const tx = await contract.submitApplication(
       programId,
@@ -126,8 +127,10 @@ async function submitApplication(programId) {
 
     const receipt = await tx.wait();
     const event = receipt.events.find(e => e.event === 'ProgramApplied');
-    const applicationId = event.args.id.toNumber();
-    const milestoneIds = event.args.milestoneIds.map(id => id.toNumber());
+    console.log(`hi`);
+    const applicationId = event.args.id.toString();
+    console.log(`hi`);
+    const milestoneIds = event.args.milestoneIds.map(id => id.toString());
 
     console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
     console.log(`📌 생성된 마일스톤 ID들:`, milestoneIds);
