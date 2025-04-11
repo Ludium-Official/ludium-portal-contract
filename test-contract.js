@@ -44,13 +44,17 @@ async function createProgram() {
   try {
     console.log("📝 프로그램 생성 중...");
     const programName = "교육 프로그램 테스트";
-    const keywords = "AI, 교육";
+    const keywords = ["AI", "교육"];
     const summary = "요약 설명입니다.";
     const description = "이것은 긴 설명입니다.";
     const links = ["https://example.com"];
     const price = ethers.utils.parseEther("0.001");
     const startTime = Math.floor(Date.now() / 1000) + 60; // 시작: 1분 후
     const endTime = startTime + 3600; // 종료: 1시간 후
+    console.log("🌍 .env에서 불러온 VALIDATOR_ADDRESS:", process.env.VALIDATOR_ADDRESS);
+    console.log("🌍 .env에서 불러온 RPCURL:", process.env.RPC_URL);
+    console.log("🌍 .env에서 불러온 contractaddr:", process.env.CONTRACT_ADDRESS);
+
 
     console.log(`이름: ${programName}`);
     console.log(`가격: ${ethers.utils.formatEther(price)} EDU`);
@@ -76,6 +80,7 @@ async function createProgram() {
     const event = receipt.events.find(e => e.event === 'ProgramCreated');
     if (event) {
       const programId = event.args[0].toString();
+      event.args.id
       console.log(`🎉 프로그램 생성 완료! 프로그램 ID: ${programId}`);
       return programId;
     } else {

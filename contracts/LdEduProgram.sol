@@ -20,7 +20,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     struct EduProgram {
         uint256 id;
         string name;
-        string keywords;
+        string[] keywords;
         uint256 price;
         uint256 startTime;
         uint256 endTime;
@@ -74,7 +74,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     function createEduProgram(
         string memory _name,
         uint256 _price,
-        string memory _keywords,
+        string [] memory _keywords,
         uint256 _startTime,
         uint256 _endTime,
         address _validator,
