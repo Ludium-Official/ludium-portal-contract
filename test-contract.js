@@ -166,10 +166,12 @@ async function selectApplication(applicationId) {
 async function denyApplication(applicationId) {
   try {
     const tx = await contract.denyApplication(applicationId);
-    await tx.wait();
-    console.log(`❌ application 거절 완료`);
+    const receipt = await tx.wait();
+    const event = receipt.events.find(e => e.event === "ApplicationSelected" || e.event === "ApplicationDenied");
+    if (!event) throw new Error("Application denial event not found");
+    console.log(`❌ Application denied successfully (applicationId: ${applicationId})`);
   } catch (error) {
-    console.error("❌ application 거절 실패:", error.message);
+    console.error("❌ Failed to deny application:", error.message);
     throw error;
   }
 }
@@ -177,10 +179,12 @@ async function denyApplication(applicationId) {
 async function submitMilestone(milestoneId, links) {
   try {
     const tx = await contract.submitMilestone(milestoneId, links);
-    await tx.wait();
-    console.log(`📝 마일스톤 제출 완료 (milestoneId: ${milestoneId})`);
+    const receipt = await tx.wait();
+    const event = receipt.events.find(e => e.event === "MilestoneSubmitted");
+    if (!event) throw new Error("MilestoneSubmitted event not found");
+    console.log(`📝 Milestone submitted successfully (milestoneId: ${milestoneId})`);
   } catch (error) {
-    console.error("❌ 마일스톤 제출 실패:", error.message);
+    console.error("❌ Failed to submit milestone:", error.message);
     throw error;
   }
 }
@@ -188,25 +192,29 @@ async function submitMilestone(milestoneId, links) {
 async function acceptMilestone(milestoneId) {
   try {
     const tx = await contract.acceptMilestone(milestoneId);
-    await tx.wait();
-    console.log(`✅ 마일스톤 승인 완료 (보상 전송 포함)`);
+    const receipt = await tx.wait();
+    const event = receipt.events.find(e => e.event === "MilestoneAccepted");
+    if (!event) throw new Error("MilestoneAccepted event not found");
+    console.log(`✅ Milestone accepted successfully (milestoneId: ${milestoneId})`);
   } catch (error) {
-    console.error("❌ 마일스톤 승인 실패:", error.message);
+    console.error("❌ Failed to accept milestone:", error.message);
     throw error;
   }
 }
 
 async function rejectMilestone(milestoneId) {
   try {
-    const tx = await contract.rejectMilestone(programId, milestoneId);
-    await tx.wait();
-
-    console.log(`❌ 마일스톤 거절 완료`);
+    const tx = await contract.rejectMilestone(milestoneId);
+    const receipt = await tx.wait();
+    const event = receipt.events.find(e => e.event === "MilestoneRejected");
+    if (!event) throw new Error("MilestoneRejected event not found");
+    console.log(`❌ Milestone rejected successfully (milestoneId: ${milestoneId})`);
   } catch (error) {
-    console.error("❌ 마일스톤 거절 실패:", error.message);
+    console.error("❌ Failed to reject milestone:", error.message);
     throw error;
   }
 }
+
 
 async function getProgramInfo(programId) {
   try {
