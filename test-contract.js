@@ -270,27 +270,27 @@ async function main() {
 
 
       case 'select-application':
-        if (!programId || applicationId === undefined) throw new Error("Program ID, Application ID 필요");
+        if (applicationId === undefined) throw new Error("Application ID 필요");
         await selectApplication(applicationId);
         break;
 
       case 'deny-application':
-        if (!programId) throw new Error("Program ID 필요");
+        if (!applicationId) throw new Error("Program ID 필요");
         await denyApplication(applicationId);
         break;
 
       case 'submit-milestone':
-        if (!applicationId || milestoneId === undefined) throw new Error("applicationId, Milestone ID 필요");
+        if (!milestoneId) throw new Error("applicationId, Milestone ID 필요");
         await submitMilestone(milestoneId, ["https://link.to/milestone"]);
         break;
 
       case 'accept-milestone':
-        if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
+        if (!milestoneId) throw new Error("Program ID, Milestone ID 필요");
         await acceptMilestone(milestoneId);
         break;
 
       case 'reject-milestone':
-        if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
+        if (!milestoneId) throw new Error("Program ID, Milestone ID 필요");
         await rejectMilestone(milestoneId);
         break;
 
