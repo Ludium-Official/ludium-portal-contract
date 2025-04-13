@@ -151,7 +151,7 @@ async function selectApplication(applicationId) {
   try {
     console.log(`📥 Application 선택 중... (applicationId: ${applicationId})`);
 
-    const tx = await contract.selectApplication(applicationId, true);
+    const tx = await contract.selectApplication(applicationId);
     const receipt = await tx.wait();
 
     const event = receipt.events.find(e => e.event === "ApplicationSelected");
@@ -244,10 +244,8 @@ async function getProgramInfo(programId) {
 // 명령행 인자 처리 및 테스트 실행
 async function main() {
   const args = process.argv.slice(2);
-  const command = args[0];
-  const programId = args[1] ? parseInt(args[1]) : undefined;
-  const applicationId = args[2] ? parseInt(args[2]) : undefined;
-  const milestoneId = args[3] ? parseInt(args[3]) : undefined;
+  const [command, arg1] = args;
+  const num1 = arg1 ? parseInt(arg1) : undefined;
 
   try {
     switch (command) {
@@ -260,79 +258,65 @@ async function main() {
         break;
 
       case 'approve':
-        await approveProgram(programId);
+        if (!num1) throw new Error("Program ID is required");
+        await approveProgram(num1);
         break;
 
       case 'submit-application':
-        if (!programId) throw new Error("Program ID 필요");
-        await submitApplication(programId);
+        if (!num1) throw new Error("Program ID is required");
+        await submitApplication(num1);
         break;
 
-
       case 'select-application':
-        if (applicationId === undefined) throw new Error("Application ID 필요");
-        await selectApplication(applicationId);
+        if (!num1) throw new Error("Application ID is required");
+        await selectApplication(num1);
         break;
 
       case 'deny-application':
-        if (!applicationId) throw new Error("Program ID 필요");
-        await denyApplication(applicationId);
+        if (!num1) throw new Error("Application ID is required");
+        await denyApplication(num1);
         break;
 
       case 'submit-milestone':
-        if (!milestoneId) throw new Error("applicationId, Milestone ID 필요");
-        await submitMilestone(milestoneId, ["https://link.to/milestone"]);
+        if (!num1) throw new Error("Milestone ID is required");
+        await submitMilestone(num1, ["https://link.to/milestone"]);
         break;
 
       case 'accept-milestone':
-        if (!milestoneId) throw new Error("Program ID, Milestone ID 필요");
-        await acceptMilestone(milestoneId);
+        if (!num1) throw new Error("Milestone ID is required");
+        await acceptMilestone(num1);
         break;
 
       case 'reject-milestone':
-        if (!milestoneId) throw new Error("Program ID, Milestone ID 필요");
-        await rejectMilestone(milestoneId);
+        if (!num1) throw new Error("Milestone ID is required");
+        await rejectMilestone(num1);
         break;
 
       case 'info':
-        if (!programId) throw new Error("Program ID 필요");
-        await getProgramInfo(programId);
-        break;
-
-      case 'all':
-        const pid = await createProgram();
-        const appId = await submitApplication(pid);
-        await selectApplication(appId);
-        await denyApplication(appId);
-        await submitMilestone(0, ["https://link1"]);
-        await acceptMilestone(0);
-        await submitMilestone(1, ["https://link2"]);
-        await acceptMilestone(1);
-        await rejectMilestone(1);
-        await getProgramInfo();
+        if (!num1) throw new Error("Program ID is required");
+        await getProgramInfo(num1);
         break;
 
       default:
         console.log(`
-사용법: node test.js <command> [programId] [applicationId] [milestoneId]
+Usage: node test.js <command> [id]
 
-명령어:
-  deploy                                컨트랙트 배포
-  create                                프로그램 생성
-  approve <programId>                   프로그램 승인
-  submit-application <programId>        지원서 제출
-  select <applicationId>                지원서 선택
-  submit-milestone <milestoneId>        마일스톤 제출
-  accept-milestone <milestoneId>        마일스톤 승인
-  reject-milestone <milestoneId>        마일스톤 거절
-  info <programId>                      프로그램 정보 조회
-  all                                   전체 흐름 테스트
+Commands:
+  deploy                              Deploy contract
+  create                              Create a program
+  approve <programId>                 Approve a program
+  submit-application <programId>      Submit an application
+  select-application <applicationId>  Select an application
+  deny-application <applicationId>    Deny an application
+  submit-milestone <milestoneId>      Submit a milestone
+  accept-milestone <milestoneId>      Accept a milestone
+  reject-milestone <milestoneId>      Reject a milestone
+  info <programId>                    View program information
 `);
     }
   } catch (err) {
-    console.error("❌ 오류:", err.message);
+    console.error("❌ Error:", err.message);
   }
 }
 
 main();
-
