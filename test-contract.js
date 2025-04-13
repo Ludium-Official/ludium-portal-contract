@@ -1,6 +1,9 @@
 require('dotenv').config();
+const { WepinProvider } = require('@wepin/provider-js');
+
 const { ethers } = require('ethers');
 const fs = require('fs');
+
 
 // 환경 변수 로드
 const {
@@ -9,7 +12,6 @@ const {
   CONTRACT_ADDRESS,
   VALIDATOR_ADDRESS, 
   BUILDER_ADDRESS,
-  BUILDER_PRIVATE_KEY
 } = process.env;
 
 // ABI 파일 로드
@@ -76,10 +78,12 @@ async function createProgram() {
     );
     console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);
     const receipt = await tx.wait();
+    console.log(`tx:`,tx.address);
     // 이벤트에서 프로그램 ID 추출
     const event = receipt.events.find(e => e.event === 'ProgramCreated');
     if (event) {
       const programId = event.args[0].toString();
+      
       event.args.id
       console.log(`🎉 프로그램 생성 완료! 프로그램 ID: ${programId}`);
       return programId;
@@ -129,14 +133,10 @@ async function submitApplication(programId) {
       milestoneDescriptions,
       milestonePrices
     );
-
     const receipt = await tx.wait();
     const event = receipt.events.find(e => e.event === 'ProgramApplied');
-    console.log(`hi`);
     const applicationId = event.args.id.toString();
-    console.log(`hi`);
     const milestoneIds = event.args.milestoneIds.map(id => id.toString());
-
     console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
     console.log(`📌 생성된 마일스톤 ID들:`, milestoneIds);
     return { applicationId, milestoneIds };
@@ -147,48 +147,48 @@ async function submitApplication(programId) {
   }
 }
 
-async function selectApplication(programId, applicationId) {
+async function selectApplication(applicationId) {
   try {
-    console.log(`📥 Application 선택 중... (programId: ${programId}, applicationId: ${applicationId})`);
+    console.log(`📥 Application 선택 중... (applicationId: ${applicationId})`);
 
-    const tx = await contract.selectApplication(programId, applicationId, true);
+    const tx = await contract.selectApplication(applicationId, true);
     const receipt = await tx.wait();
 
     const event = receipt.events.find(e => e.event === "ApplicationSelected");
     if (!event) throw new Error("ApplicationSelected 이벤트를 찾을 수 없습니다.");
-
-    const milestoneIds = event.args.milestoneIds.map(id => id.toNumber());
-
     console.log(`✅ Application 선택 완료`);
-    console.log(`📌 생성된 마일스톤 ID들:`, milestoneIds);
-
-    return milestoneIds;
   } catch (error) {
     console.error("❌ Application 선택 실패:", error.message);
     throw error;
   }
 }
 
-async function submitMilestone(programId, milestoneId, links) {
+async function denyApplication(applicationId) {
   try {
-    const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
-    const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
-
-    const tx = await builderContract.submitMilestone(programId, milestoneId, links);
+    const tx = await contract.denyApplication(applicationId);
     await tx.wait();
+    console.log(`❌ application 거절 완료`);
+  } catch (error) {
+    console.error("❌ application 거절 실패:", error.message);
+    throw error;
+  }
+}
 
-    console.log(`📝 마일스톤 제출 완료 (programId: ${programId}, milestoneId: ${milestoneId})`);
+async function submitMilestone(milestoneId, links) {
+  try {
+    const tx = await contract.submitMilestone(milestoneId, links);
+    await tx.wait();
+    console.log(`📝 마일스톤 제출 완료 (milestoneId: ${milestoneId})`);
   } catch (error) {
     console.error("❌ 마일스톤 제출 실패:", error.message);
     throw error;
   }
 }
 
-async function acceptMilestone(programId, milestoneId) {
+async function acceptMilestone(milestoneId) {
   try {
-    const tx = await contract.acceptMilestone(programId, milestoneId);
+    const tx = await contract.acceptMilestone(milestoneId);
     await tx.wait();
-
     console.log(`✅ 마일스톤 승인 완료 (보상 전송 포함)`);
   } catch (error) {
     console.error("❌ 마일스톤 승인 실패:", error.message);
@@ -196,7 +196,7 @@ async function acceptMilestone(programId, milestoneId) {
   }
 }
 
-async function rejectMilestone(programId, milestoneId) {
+async function rejectMilestone(milestoneId) {
   try {
     const tx = await contract.rejectMilestone(programId, milestoneId);
     await tx.wait();
@@ -233,90 +233,6 @@ async function getProgramInfo(programId) {
   }
 }
 
-// 그랜츠 청구 함수 (주요 수정 부분)
-async function claimGrants(programId) {
-  try {
-    console.log(`\n💰 그랜츠 청구 중... (ID: ${programId})`);
-    
-    // 빌더 계정 설정 검증
-    if (!BUILDER_PRIVATE_KEY) {
-      throw new Error("BUILDER_PRIVATE_KEY가 .env 파일에 설정되지 않았습니다.");
-    }
-    
-    // 빌더 지갑 생성
-    const builderWallet = new ethers.Wallet(BUILDER_PRIVATE_KEY, provider);
-    console.log(`빌더 지갑 주소: ${builderWallet.address}`);
-    
-    // 컨트랙트 인스턴스 생성 (빌더 지갑으로)
-    const builderContract = new ethers.Contract(CONTRACT_ADDRESS, contractABI, builderWallet);
-
-    // 프로그램 정보 확인
-    console.log(`📋 프로그램 정보 확인 중...`);
-    const program = await builderContract.eduPrograms(programId);
-    
-    console.log(`프로그램 ID: ${program.id.toString()}`);
-    console.log(`프로그램 이름: ${program.name}`);
-    console.log(`승인 여부: ${program.approve ? '승인됨' : '미승인'}`);
-    console.log(`청구 여부: ${program.claimed ? '이미 청구됨' : '미청구'}`);
-    console.log(`프로그램에 등록된 빌더 주소: ${program.builder}`);
-    console.log(`현재 시간: ${Math.floor(Date.now() / 1000)}`);
-    console.log(`프로그램 시작 시간: ${program.startTime.toString()}`);
-    console.log(`프로그램 종료 시간: ${program.endTime.toString()}`);
-    
-    // 중요: 프로그램에 등록된 빌더 주소와 지갑 주소 비교
-    if (builderWallet.address.toLowerCase() !== program.builder.toLowerCase()) {
-      throw new Error(`현재 지갑 주소(${builderWallet.address})가 프로그램에 등록된 빌더 주소(${program.builder})와 일치하지 않습니다.`);
-    }
-    
-    // 필수 조건 확인
-    if (!program.approve) {
-      throw new Error("이 프로그램은 아직 승인되지 않았습니다.");
-    }
-    if (program.claimed) {
-      throw new Error("이 프로그램은 이미 청구되었습니다.");
-    }
-    
-    const currentTime = Math.floor(Date.now() / 1000);
-    if (currentTime < program.startTime.toNumber()) {
-      throw new Error(`프로그램이 아직 시작되지 않았습니다. (시작 시간: ${new Date(program.startTime.toNumber() * 1000).toLocaleString()})`);
-    }
-    if (currentTime > program.endTime.toNumber()) {
-      throw new Error(`프로그램 청구 기간이 지났습니다. (종료 시간: ${new Date(program.endTime.toNumber() * 1000).toLocaleString()})`);
-    }
-    
-    // 빌더 계정 잔액 확인
-    const balance = await provider.getBalance(builderWallet.address);
-    console.log(`빌더 계정 잔액: ${ethers.utils.formatEther(balance)} ETH`);
-    
-    // 단순하게 트랜잭션 보내기 (가스 파라미터 없이)
-    console.log(`🚀 트랜잭션 전송 중...`);
-    const tx = await builderContract.claimGrants(programId);
-    
-    console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);
-    const receipt = await tx.wait();
-    console.log(`🎉 그랜츠 청구 완료!`);
-    console.log(`블록 번호: ${receipt.blockNumber}`);
-    console.log(`가스 사용량: ${receipt.gasUsed.toString()}`);
-    
-    return receipt;
-  } catch (error) {
-    console.error(`❌ 그랜츠 청구 실패:`, error.message);
-    
-    // 상세 오류 정보 출력
-    if (error.reason) {
-      console.error(`오류 이유: ${error.reason}`);
-    }
-    if (error.code) {
-      console.error(`오류 코드: ${error.code}`);
-    }
-    if (error.transaction) {
-      console.error(`트랜잭션 해시: ${error.transaction.hash}`);
-    }
-    
-    throw error;
-  }
-}
-
 // 명령행 인자 처리 및 테스트 실행
 async function main() {
   const args = process.argv.slice(2);
@@ -344,24 +260,30 @@ async function main() {
         await submitApplication(programId);
         break;
 
+
       case 'select-application':
         if (!programId || applicationId === undefined) throw new Error("Program ID, Application ID 필요");
-        await selectApplication(programId, applicationId);
+        await selectApplication(applicationId);
+        break;
+
+      case 'deny-application':
+        if (!programId) throw new Error("Program ID 필요");
+        await denyApplication(applicationId);
         break;
 
       case 'submit-milestone':
-        if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
-        await submitMilestone(programId, milestoneId, ["https://link.to/milestone"]);
+        if (!applicationId || milestoneId === undefined) throw new Error("applicationId, Milestone ID 필요");
+        await submitMilestone(milestoneId, ["https://link.to/milestone"]);
         break;
 
       case 'accept-milestone':
         if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
-        await acceptMilestone(programId, milestoneId);
+        await acceptMilestone(milestoneId);
         break;
 
       case 'reject-milestone':
         if (!programId || milestoneId === undefined) throw new Error("Program ID, Milestone ID 필요");
-        await rejectMilestone(programId, milestoneId);
+        await rejectMilestone(milestoneId);
         break;
 
       case 'info':
@@ -372,13 +294,14 @@ async function main() {
       case 'all':
         const pid = await createProgram();
         const appId = await submitApplication(pid);
-        await selectApplication(pid, appId);
-        await submitMilestone(pid, 0, ["https://link1"]);
-        await acceptMilestone(pid, 0);
-        await submitMilestone(pid, 1, ["https://link2"]);
-        await acceptMilestone(pid, 1);
-        await rejectMilestone(pid,1);
-        await getProgramInfo(pid);
+        await selectApplication(appId);
+        await denyApplication(appId);
+        await submitMilestone(0, ["https://link1"]);
+        await acceptMilestone(0);
+        await submitMilestone(1, ["https://link2"]);
+        await acceptMilestone(1);
+        await rejectMilestone(1);
+        await getProgramInfo();
         break;
 
       default:
@@ -390,10 +313,10 @@ async function main() {
   create                                프로그램 생성
   approve <programId>                   프로그램 승인
   submit-application <programId>        지원서 제출
-  select <programId> <applicationId>    지원서 선택
-  submit-milestone <programId> <id>     마일스톤 제출
-  accept-milestone <programId> <id>    마일스톤 승인
-  reject-milestone <programId> <id>    마일스톤 거절
+  select <applicationId>                지원서 선택
+  submit-milestone <milestoneId>        마일스톤 제출
+  accept-milestone <milestoneId>        마일스톤 승인
+  reject-milestone <milestoneId>        마일스톤 거절
   info <programId>                      프로그램 정보 조회
   all                                   전체 흐름 테스트
 `);
@@ -404,3 +327,4 @@ async function main() {
 }
 
 main();
+

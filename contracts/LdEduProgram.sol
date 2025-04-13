@@ -8,10 +8,11 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
     event ProgramApproved(uint256 indexed programId);
     event ProgramApplied(uint256 indexed id, uint256[] milestoneIds);
-    event ApplicationSelected(uint256 indexed programId, uint256 applicationId, address builder,uint256[] milestoneIds);
-    event MilestoneSubmitted(uint256 indexed id, uint256 milestoneId, string[] links);
-    event MilestoneAccepted(uint256 indexed id, uint256 milestoneId, uint256 reward);
-    event MilestoneRejected(uint256 indexed id, uint256 milestoneId);
+    event ApplicationSelected(uint256 indexed applicationId, address indexed builder);
+    event ApplicationDenied(uint256 indexed applicationId);
+    event MilestoneSubmitted( uint256 indexed milestoneId);
+    event MilestoneAccepted(uint256 indexed milestoneId, uint256 reward);
+    event MilestoneRejected( uint256 indexed milestoneId);
     event ProgramClaimed(uint256 indexed id, address builder, uint256 amount);
     event FundsReclaimed(uint256 indexed id, address maker, uint256 amount);
     event ProgramEdited(uint256 programId, uint256 price, uint256 startTime, uint256 endTime, address newValidator);
@@ -40,29 +41,28 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         string[] milestoneNames;
         string[] milestoneDescriptions;
         uint256[] milestonePrices;
+        uint256 programId;
         ApplicationStatus status;
     }
-
-    enum ApplicationStatus { Applied, Denied, Selected }
-    enum MilestoneStatus { NotSubmitted, Submitted, Accepted, Rejected }
 
     struct Milestone {
         uint256 id;
         string name;
         string description;
         uint256 price;
-        MilestoneStatus status;
         string[] links;
+        uint256 applicationId;
+        MilestoneStatus status;
     }
 
-    mapping(uint256 => EduProgram) public eduPrograms;
-    mapping(uint256 => Application[]) public programApplications;
-    mapping(uint256 => mapping(uint256 => Milestone)) public programMilestones;
-    mapping(uint256 => uint256[]) public milestoneIds;
-    mapping(uint256 => uint256) public selectedApplicationIndex;
-    mapping(uint256 => uint256) public nextApplicationId;
-    mapping(uint256 => uint256) public nextMilestoneId;
+    enum ApplicationStatus { Applied, Denied, Selected }
+    enum MilestoneStatus { NotSubmitted, Submitted, Accepted, Rejected }
 
+    mapping(uint256 => EduProgram) public eduPrograms;
+    mapping(uint256 => Application) public applications;
+    mapping(uint256 => Milestone) public milestones;
+    uint256 public nextApplicationId;
+    uint256 public nextMilestoneId;
     uint256 public nextProgramId;
     uint256 private fee;
 
@@ -127,95 +127,81 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         require(block.timestamp < program.endTime, "Program ended");
         require(names.length == descriptions.length && names.length == prices.length, "Input mismatch");
 
-        uint256 total;
-        for (uint256 i = 0; i < prices.length; i++) {
-            total += prices[i];
-        }
-        require(total == program.price, "Milestone total != program price");
-
-        uint256 applicationId = nextApplicationId[programId]++;
-
+        uint256 applicationId = nextApplicationId++;
+        
         Application memory a = Application({
-            id: applicationId,
-            builder: msg.sender,
-            milestoneNames: names,
-            milestoneDescriptions: descriptions,
-            milestonePrices: prices,
-            status: ApplicationStatus.Applied
+        id: applicationId,
+        builder: msg.sender,
+        milestoneNames: names,
+        milestoneDescriptions: descriptions,
+        milestonePrices: prices,
+        programId: programId,
+        status: ApplicationStatus.Applied
         });
-
-        programApplications[programId].push(a);
+        applications[applicationId] = a;
         
         uint256[] memory createdMilestoneIds = new uint256[](names.length);
 
         for (uint256 j = 0; j < names.length; j++) {
-            uint256 milestoneId = nextMilestoneId[programId]++;
-            programMilestones[programId][milestoneId] = Milestone({
-                id: milestoneId,
-                name: names[j],
-                description: descriptions[j],
-                price: prices[j],
-                status: MilestoneStatus.NotSubmitted,
-                links: new string[](0)
+        uint256 milestoneId = nextMilestoneId++;
+        milestones[milestoneId] = Milestone({
+            id: milestoneId,
+            name: names[j],
+            description: descriptions[j],
+            price: prices[j],
+            links: new string[](0),
+            applicationId: applicationId,
+            status: MilestoneStatus.NotSubmitted
         });
-        milestoneIds[programId].push(milestoneId);
         createdMilestoneIds[j] = milestoneId;
-    }
-
-    emit ProgramApplied(applicationId, createdMilestoneIds);
-    }
-
-    function selectApplication(uint256 programId, uint256 applicationId, bool isSelected) external {
-        EduProgram storage program = eduPrograms[programId];
-        require(msg.sender == program.validator, "Not validator");
-
-        Application[] storage applications = programApplications[programId];
-        bool found = false;
-
-        for (uint256 i = 0; i < applications.length; i++) {
-            if (applications[i].id == applicationId) {
-                Application storage app = applications[i];
-                require(app.status == ApplicationStatus.Applied, "Already evaluated");
-
-                if (isSelected) {
-                    require(program.builder == address(0), "Already selected");
-                    app.status = ApplicationStatus.Selected;
-                    program.builder = app.builder;
-                    program.approve = true;
-                    selectedApplicationIndex[programId] = i;
-
-                    emit ApplicationSelected(programId, applicationId, app.builder, milestoneIds[programId]);
-                } else {
-                    app.status = ApplicationStatus.Denied;
-                }
-
-                found = true;
-                break;
-            }
         }
 
-        require(found, "Application not found");
+        emit ProgramApplied(applicationId, createdMilestoneIds);
     }
 
-    function submitMilestone(uint256 programId, uint256 milestoneId, string[] calldata links) external {
-        EduProgram storage program = eduPrograms[programId];
-        require(program.approve, "Program not approved");
-        require(msg.sender == program.builder, "Not builder");
+    function selectApplication( uint256 applicationId) external {
+        Application storage app = applications[applicationId];
+        EduProgram storage program = eduPrograms[app.programId];
 
-        Milestone storage m = programMilestones[programId][milestoneId];
+        require(msg.sender == program.validator, "Not validator");
+        require(program.builder == address(0), "Already selected");
+        require(app.status == ApplicationStatus.Applied, "Already evaluated");
+
+        app.status = ApplicationStatus.Selected;
+        program.builder = app.builder;
+        program.approve = true;
+
+        emit ApplicationSelected(applicationId,app.builder);
+    }
+
+    function denyApplication(uint256 applicationId) external {
+        Application storage app = applications[applicationId];
+        EduProgram storage program = eduPrograms[app.programId];
+        require(msg.sender == program.validator, "Not validator");
+        require(app.status == ApplicationStatus.Applied, "Already evaluated");
+        app.status = ApplicationStatus.Denied;
+        emit ApplicationDenied(applicationId);
+    }       
+
+    function submitMilestone(uint256 milestoneId, string[] calldata links) external {
+        Milestone storage m = milestones[milestoneId];
+        Application storage app = applications[m.applicationId];
+        require(app.status == ApplicationStatus.Selected, "Application not selected");
+        require(msg.sender == app.builder, "Not builder");
         require(m.status == MilestoneStatus.NotSubmitted, "Already submitted");
 
         m.status = MilestoneStatus.Submitted;
         m.links = links;
 
-        emit MilestoneSubmitted(programId, milestoneId, links);
+        emit MilestoneSubmitted(milestoneId);
     }
 
-    function acceptMilestone(uint256 programId, uint256 milestoneId) external nonReentrant {
-        EduProgram storage program = eduPrograms[programId];
-        require(msg.sender == program.validator, "Not validator");
+    function acceptMilestone(uint256 milestoneId) external nonReentrant {
+        Milestone storage m = milestones[milestoneId];
+        Application storage app = applications[m.applicationId];
+        EduProgram storage program = eduPrograms[app.programId];
 
-        Milestone storage m = programMilestones[programId][milestoneId];
+        require(msg.sender == program.validator, "Not validator");
         require(m.status == MilestoneStatus.Submitted, "Invalid status");
 
         m.status = MilestoneStatus.Accepted;
@@ -223,21 +209,23 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         (bool sent, ) = payable(program.builder).call{value: m.price}("");
         require(sent, "ETH transfer failed");
 
-        emit MilestoneAccepted(programId, milestoneId, m.price);
-        emit ProgramClaimed(programId, program.builder, m.price);
+        emit MilestoneAccepted(milestoneId, m.price);
+        emit ProgramClaimed(program.id, program.builder, m.price);
     }
 
-    function rejectMilestone(uint256 programId, uint256 milestoneId) external {
-        EduProgram storage program = eduPrograms[programId];
-        require(msg.sender == program.validator, "Not validator");
+    function rejectMilestone(uint256 milestoneId) external {
+        Milestone storage m = milestones[milestoneId];
+        Application storage app = applications[m.applicationId];
+        EduProgram storage program = eduPrograms[app.programId];
 
-        Milestone storage m = programMilestones[programId][milestoneId];
+        require(msg.sender == program.validator, "Not validator");
         require(m.status == MilestoneStatus.Submitted, "Invalid status");
 
         m.status = MilestoneStatus.Rejected;
 
-        emit MilestoneRejected(programId, milestoneId);
+        emit MilestoneRejected(milestoneId);
     }
+
 
     function reclaimFunds(uint256 programId) external nonReentrant {
         EduProgram storage program = eduPrograms[programId];
@@ -279,14 +267,5 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     function getFee() external view returns (uint256) {
         return fee;
-    }
-
-    function getMilestones(uint256 programId) external view returns (Milestone[] memory) {
-        uint256[] memory ids = milestoneIds[programId];
-        Milestone[] memory result = new Milestone[](ids.length);
-        for (uint256 i = 0; i < ids.length; i++) {
-            result[i] = programMilestones[programId][ids[i]];
-        }
-        return result;
     }
 }
