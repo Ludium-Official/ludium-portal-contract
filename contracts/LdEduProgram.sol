@@ -7,7 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 contract LdEduProgram is Ownable, ReentrancyGuard {
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
     event ProgramApproved(uint256 indexed programId);
-    event ProgramApplied(uint256 indexed id, uint256[] milestoneIds);
+    event ProgramApplied(uint256 indexed applicationId, uint256[] milestoneIds );
     event ApplicationSelected(uint256 indexed applicationId, address indexed builder);
     event ApplicationDenied(uint256 indexed applicationId);
     event MilestoneSubmitted( uint256 indexed milestoneId);
@@ -38,11 +38,14 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     struct Application {
         uint256 id;
         address builder;
-        string[] milestoneNames;
-        string[] milestoneDescriptions;
-        uint256[] milestonePrices;
         uint256 programId;
         ApplicationStatus status;
+    }
+
+    struct MilestoneInput {
+        string name;
+        string description;
+        uint256 price;
     }
 
     struct Milestone {
@@ -119,42 +122,34 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     function submitApplication(
         uint256 programId,
-        string[] calldata names,
-        string[] calldata descriptions,
-        uint256[] calldata prices
+        MilestoneInput[] calldata milestonesInput
     ) external {
-        EduProgram storage program = eduPrograms[programId];
-        require(block.timestamp < program.endTime, "Program ended");
-        require(names.length == descriptions.length && names.length == prices.length, "Input mismatch");
+        require(block.timestamp < eduPrograms[programId].endTime, "Program ended");
 
         uint256 applicationId = nextApplicationId++;
-        
+        uint256[] memory createdMilestoneIds = new uint256[](milestonesInput.length);
+
+        for (uint256 i = 0; i < milestonesInput.length; i++) {
+            uint256 milestoneId = nextMilestoneId++;
+            milestones[milestoneId] = Milestone({
+                id: milestoneId,
+                name: milestonesInput[i].name,
+                description: milestonesInput[i].description,
+                price: milestonesInput[i].price,
+                links: new string[](0),
+                applicationId: applicationId,
+                status: MilestoneStatus.NotSubmitted
+        });
+        createdMilestoneIds[i] = milestoneId;
+    }
+
         Application memory a = Application({
-        id: applicationId,
-        builder: msg.sender,
-        milestoneNames: names,
-        milestoneDescriptions: descriptions,
-        milestonePrices: prices,
-        programId: programId,
-        status: ApplicationStatus.Applied
+            id: applicationId,
+            builder: msg.sender,
+            programId: programId,
+            status: ApplicationStatus.Applied
         });
         applications[applicationId] = a;
-        
-        uint256[] memory createdMilestoneIds = new uint256[](names.length);
-
-        for (uint256 j = 0; j < names.length; j++) {
-        uint256 milestoneId = nextMilestoneId++;
-        milestones[milestoneId] = Milestone({
-            id: milestoneId,
-            name: names[j],
-            description: descriptions[j],
-            price: prices[j],
-            links: new string[](0),
-            applicationId: applicationId,
-            status: MilestoneStatus.NotSubmitted
-        });
-        createdMilestoneIds[j] = milestoneId;
-        }
 
         emit ProgramApplied(applicationId, createdMilestoneIds);
     }
@@ -164,7 +159,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         EduProgram storage program = eduPrograms[app.programId];
 
         require(msg.sender == program.validator, "Not validator");
-        require(program.builder == address(0), "Already selected");
         require(app.status == ApplicationStatus.Applied, "Already evaluated");
 
         app.status = ApplicationStatus.Selected;

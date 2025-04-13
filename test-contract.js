@@ -117,35 +117,43 @@ async function approveProgram(programId) {
 
 async function submitApplication(programId) {
   try {
-    console.log(`📨 Application 제출 중... (programId: ${programId})`);
-    const milestoneNames = ["1단계", "2단계"];
-    const milestoneDescriptions = ["기초 개발", "배포 완료"];
-    const milestonePrices = [
-      ethers.utils.parseEther("0.0001"),
-      ethers.utils.parseEther("0.0001"),
-    ];
+    console.log(`📨 Submitting application... (programId: ${programId})`);
 
-    console.log(`📨 Milestone 제출 중... (programId: ${programId})`);
+    const tx = await contract.submitApplication(programId, [
+      {
+        name: "Design Phase",
+        description: "UI/UX Design completed",
+        price: ethers.utils.parseEther("0.0001")
+      },
+      {
+        name: "Development Phase",
+        description: "Core logic implemented",
+        price: ethers.utils.parseEther("0.0001")
+      }
+    ]);
 
-    const tx = await contract.submitApplication(
-      programId,
-      milestoneNames,
-      milestoneDescriptions,
-      milestonePrices
-    );
     const receipt = await tx.wait();
     const event = receipt.events.find(e => e.event === 'ProgramApplied');
-    const applicationId = event.args.id.toString();
+    if (!event) throw new Error("ProgramApplied event not found");
+
+    const applicationId = event.args.applicationId.toString();
     const milestoneIds = event.args.milestoneIds.map(id => id.toString());
-    console.log(`✅ Application 제출 완료 - ID: ${applicationId}`);
-    console.log(`📌 생성된 마일스톤 ID들:`, milestoneIds);
-    return { applicationId, milestoneIds };
-    
+
+    console.log(`✅ Application submitted - ID: ${applicationId}`);
+    console.log(`📌 Milestones created:`, milestoneIds);
+
+    return {
+      applicationId,
+      milestoneIds
+    };
+
   } catch (error) {
-    console.error("❌ Application 제출 실패:", error.message);
+    console.error("❌ Failed to submit application:", error.message);
     throw error;
   }
 }
+
+
 
 async function selectApplication(applicationId) {
   try {
