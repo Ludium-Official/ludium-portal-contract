@@ -182,7 +182,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         Application storage app = applications[m.applicationId];
         require(app.status == ApplicationStatus.Selected, "Application not selected");
         require(msg.sender == app.builder, "Not builder");
-        require(m.status == MilestoneStatus.NotSubmitted, "Already submitted");
 
         m.status = MilestoneStatus.Submitted;
         m.links = links;
