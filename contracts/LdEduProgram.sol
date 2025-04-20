@@ -7,13 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 contract LdEduProgram is Ownable, ReentrancyGuard {
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
     event ProgramApproved(uint256 indexed programId);
-    event ProgramApplied(uint256 indexed applicationId, uint256[] milestoneIds );
-    event ApplicationSelected(uint256 indexed applicationId, address indexed builder);
-    event ApplicationDenied(uint256 indexed applicationId);
-    event MilestoneSubmitted( uint256 indexed milestoneId);
-    event MilestoneAccepted(uint256 indexed milestoneId, uint256 reward);
-    event MilestoneRejected( uint256 indexed milestoneId);
-    event ProgramClaimed(uint256 indexed id, address builder, uint256 amount);
+    event MilestoneAccepted(uint256 indexed programId, uint256 milestoneId, address indexed builder, uint256 reward);
     event FundsReclaimed(uint256 indexed id, address maker, uint256 amount);
     event ProgramEdited(uint256 programId, uint256 price, uint256 startTime, uint256 endTime, address newValidator);
     event FeeUpdated(uint256 newFee);
@@ -32,21 +26,8 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         address validator;
         bool approve;
         bool claimed;
-        address builder;
     }
 
-    struct Application {
-        uint256 id;
-        address builder;
-        uint256 programId;
-        ApplicationStatus status;
-    }
-
-    struct MilestoneInput {
-        string name;
-        string description;
-        uint256 price;
-    }
 
     struct Milestone {
         uint256 id;
@@ -55,17 +36,10 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         uint256 price;
         string[] links;
         uint256 applicationId;
-        MilestoneStatus status;
     }
 
-    enum ApplicationStatus { Applied, Denied, Selected }
-    enum MilestoneStatus { NotSubmitted, Submitted, Accepted, Rejected }
 
     mapping(uint256 => EduProgram) public eduPrograms;
-    mapping(uint256 => Application) public applications;
-    mapping(uint256 => Milestone) public milestones;
-    uint256 public nextApplicationId;
-    uint256 public nextMilestoneId;
     uint256 public nextProgramId;
     uint256 private fee;
 
@@ -103,8 +77,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
             maker: msg.sender,
             validator: _validator,
             approve: false,
-            claimed: false,
-            builder: address(0)
+            claimed: false
         });
         nextProgramId++;
         emit ProgramCreated(programId, msg.sender, _validator, _price);
@@ -121,34 +94,23 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     }
 
 
-    function acceptMilestone(uint256 milestoneId) external nonReentrant {
-        Milestone storage m = milestones[milestoneId];
-        Application storage app = applications[m.applicationId];
-        EduProgram storage program = eduPrograms[app.programId];
-
+    function acceptMilestone(
+        uint256 programId,
+        uint256 milestoneId,
+        address builder,
+        uint256 reward
+    ) external nonReentrant {
+        EduProgram storage program = eduPrograms[programId];
         require(msg.sender == program.validator, "Not validator");
-        require(m.status == MilestoneStatus.Submitted, "Invalid status");
+        require(program.approve, "Program not approved");
+        require(reward <= program.price, "Reward exceeds program balance");
 
-        m.status = MilestoneStatus.Accepted;
-
-        (bool sent, ) = payable(program.builder).call{value: m.price}("");
+        (bool sent, ) = payable(builder).call{value: reward}("");
         require(sent, "ETH transfer failed");
 
-        emit MilestoneAccepted(milestoneId, m.price);
-        emit ProgramClaimed(program.id, program.builder, m.price);
-    }
+        program.price -= reward; 
 
-    function rejectMilestone(uint256 milestoneId) external {
-        Milestone storage m = milestones[milestoneId];
-        Application storage app = applications[m.applicationId];
-        EduProgram storage program = eduPrograms[app.programId];
-
-        require(msg.sender == program.validator, "Not validator");
-        require(m.status == MilestoneStatus.Submitted, "Invalid status");
-
-        m.status = MilestoneStatus.Rejected;
-
-        emit MilestoneRejected(milestoneId);
+        emit MilestoneAccepted(programId, milestoneId, builder, reward);
     }
 
 

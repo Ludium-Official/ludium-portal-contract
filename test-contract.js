@@ -79,7 +79,6 @@ async function createProgram() {
     console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);
     const receipt = await tx.wait();
     console.log(`tx:`,tx.address);
-    // 이벤트에서 프로그램 ID 추출
     const event = receipt.events.find(e => e.event === 'ProgramCreated');
     if (event) {
       const programId = event.args[0].toString();
@@ -115,91 +114,10 @@ async function approveProgram(programId) {
 }
 
 
-async function submitApplication(programId) {
+async function acceptMilestone(programId, milestoneId, builder, reward) {
   try {
-    console.log(`📨 Submitting application... (programId: ${programId})`);
-
-    const tx = await contract.submitApplication(programId, [
-      {
-        name: "Design Phase",
-        description: "UI/UX Design completed",
-        price: ethers.utils.parseEther("0.0001")
-      },
-      {
-        name: "Development Phase",
-        description: "Core logic implemented",
-        price: ethers.utils.parseEther("0.0001")
-      }
-    ]);
-
-    const receipt = await tx.wait();
-    const event = receipt.events.find(e => e.event === 'ProgramApplied');
-    if (!event) throw new Error("ProgramApplied event not found");
-
-    const applicationId = event.args.applicationId.toString();
-    const milestoneIds = event.args.milestoneIds.map(id => id.toString());
-
-    console.log(`✅ Application submitted - ID: ${applicationId}`);
-    console.log(`📌 Milestones created:`, milestoneIds);
-
-    return {
-      applicationId,
-      milestoneIds
-    };
-
-  } catch (error) {
-    console.error("❌ Failed to submit application:", error.message);
-    throw error;
-  }
-}
-
-
-
-async function selectApplication(applicationId) {
-  try {
-    console.log(`📥 Application 선택 중... (applicationId: ${applicationId})`);
-
-    const tx = await contract.selectApplication(applicationId);
-    const receipt = await tx.wait();
-
-    const event = receipt.events.find(e => e.event === "ApplicationSelected");
-    if (!event) throw new Error("ApplicationSelected 이벤트를 찾을 수 없습니다.");
-    console.log(`✅ Application 선택 완료`);
-  } catch (error) {
-    console.error("❌ Application 선택 실패:", error.message);
-    throw error;
-  }
-}
-
-async function denyApplication(applicationId) {
-  try {
-    const tx = await contract.denyApplication(applicationId);
-    const receipt = await tx.wait();
-    const event = receipt.events.find(e => e.event === "ApplicationSelected" || e.event === "ApplicationDenied");
-    if (!event) throw new Error("Application denial event not found");
-    console.log(`❌ Application denied successfully (applicationId: ${applicationId})`);
-  } catch (error) {
-    console.error("❌ Failed to deny application:", error.message);
-    throw error;
-  }
-}
-
-async function submitMilestone(milestoneId, links) {
-  try {
-    const tx = await contract.submitMilestone(milestoneId, links);
-    const receipt = await tx.wait();
-    const event = receipt.events.find(e => e.event === "MilestoneSubmitted");
-    if (!event) throw new Error("MilestoneSubmitted event not found");
-    console.log(`📝 Milestone submitted successfully (milestoneId: ${milestoneId})`);
-  } catch (error) {
-    console.error("❌ Failed to submit milestone:", error.message);
-    throw error;
-  }
-}
-
-async function acceptMilestone(milestoneId) {
-  try {
-    const tx = await contract.acceptMilestone(milestoneId);
+    const reward = ethers.utils.parseEther(rewardEther);
+    const tx = await contract.acceptMilestone(programId, milestoneId, builder, reward);
     const receipt = await tx.wait();
     const event = receipt.events.find(e => e.event === "MilestoneAccepted");
     if (!event) throw new Error("MilestoneAccepted event not found");
@@ -210,18 +128,6 @@ async function acceptMilestone(milestoneId) {
   }
 }
 
-async function rejectMilestone(milestoneId) {
-  try {
-    const tx = await contract.rejectMilestone(milestoneId);
-    const receipt = await tx.wait();
-    const event = receipt.events.find(e => e.event === "MilestoneRejected");
-    if (!event) throw new Error("MilestoneRejected event not found");
-    console.log(`❌ Milestone rejected successfully (milestoneId: ${milestoneId})`);
-  } catch (error) {
-    console.error("❌ Failed to reject milestone:", error.message);
-    throw error;
-  }
-}
 
 
 async function getProgramInfo(programId) {
@@ -270,35 +176,12 @@ async function main() {
         await approveProgram(num1);
         break;
 
-      case 'submit-application':
-        if (!num1) throw new Error("Program ID is required");
-        await submitApplication(num1);
-        break;
-
-      case 'select-application':
-        if (!num1) throw new Error("Application ID is required");
-        await selectApplication(num1);
-        break;
-
-      case 'deny-application':
-        if (!num1) throw new Error("Application ID is required");
-        await denyApplication(num1);
-        break;
-
-      case 'submit-milestone':
-        if (!num1) throw new Error("Milestone ID is required");
-        await submitMilestone(num1, ["https://link.to/milestone"]);
-        break;
 
       case 'accept-milestone':
         if (!num1) throw new Error("Milestone ID is required");
         await acceptMilestone(num1);
         break;
 
-      case 'reject-milestone':
-        if (!num1) throw new Error("Milestone ID is required");
-        await rejectMilestone(num1);
-        break;
 
       case 'info':
         if (!num1) throw new Error("Program ID is required");
@@ -313,12 +196,7 @@ Commands:
   deploy                              Deploy contract
   create                              Create a program
   approve <programId>                 Approve a program
-  submit-application <programId>      Submit an application
-  select-application <applicationId>  Select an application
-  deny-application <applicationId>    Deny an application
-  submit-milestone <milestoneId>      Submit a milestone
-  accept-milestone <milestoneId>      Accept a milestone
-  reject-milestone <milestoneId>      Reject a milestone
+  accept-milestone <programId> <milestoneId> <builder> <reward>      Accept a milestone
   info <programId>                    View program information
 `);
     }
