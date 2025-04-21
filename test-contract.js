@@ -97,22 +97,6 @@ async function createProgram() {
   }
 }
 
-// 프로그램 승인 테스트
-async function approveProgram(programId) {
-  try {
-    console.log(`\n🔐 프로그램 승인 중... (ID: ${programId})`);
-    console.log(`빌더: ${BUILDER_ADDRESS}`);
-
-    const tx = await contract.approveProgram(programId);
-    console.log(`✅ 트랜잭션 전송됨: ${tx.hash}`);
-    await tx.wait();
-    console.log("🎉 프로그램 승인 완료!");
-  } catch (error) {
-    console.error("❌ 프로그램 승인 실패:", error.message);
-    throw error;
-  }
-}
-
 
 async function acceptMilestone(programId, milestoneId, builder, reward) {
   try {
@@ -171,17 +155,10 @@ async function main() {
         await createProgram();
         break;
 
-      case 'approve':
-        if (!num1) throw new Error("Program ID is required");
-        await approveProgram(num1);
-        break;
-
-
       case 'accept-milestone':
         if (!num1) throw new Error("Milestone ID is required");
         await acceptMilestone(num1);
         break;
-
 
       case 'info':
         if (!num1) throw new Error("Program ID is required");
@@ -195,7 +172,6 @@ Usage: node test.js <command> [id]
 Commands:
   deploy                              Deploy contract
   create                              Create a program
-  approve <programId>                 Approve a program
   accept-milestone <programId> <milestoneId> <builder> <reward>      Accept a milestone
   info <programId>                    View program information
 `);

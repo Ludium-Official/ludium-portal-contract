@@ -6,7 +6,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 
 contract LdEduProgram is Ownable, ReentrancyGuard {
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
-    event ProgramApproved(uint256 indexed programId);
     event MilestoneAccepted(uint256 indexed programId, string indexed milestoneId, address indexed builder, uint256 reward);
     event FundsReclaimed(uint256 indexed id, address maker, uint256 amount);
     event ProgramEdited(uint256 programId, uint256 price, uint256 startTime, uint256 endTime, address newValidator);
@@ -81,16 +80,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         });
         nextProgramId++;
         emit ProgramCreated(programId, msg.sender, _validator, _price);
-    }
-
-    function approveProgram(uint256 programId) external {
-        EduProgram storage program = eduPrograms[programId];
-        require(msg.sender == program.validator, "Not validator");
-        require(block.timestamp <= program.endTime, "Program ended");
-        require(!program.approve, "Already approved");
-
-        program.approve = true;
-        emit ProgramApproved(programId);
     }
 
 
