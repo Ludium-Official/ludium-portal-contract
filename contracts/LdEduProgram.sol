@@ -7,7 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 contract LdEduProgram is Ownable, ReentrancyGuard {
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
     event ProgramApproved(uint256 indexed programId);
-    event MilestoneAccepted(uint256 indexed programId, uint256 milestoneId, address indexed builder, uint256 reward);
+    event MilestoneAccepted(uint256 indexed programId, string indexed milestoneId, address indexed builder, uint256 reward);
     event FundsReclaimed(uint256 indexed id, address maker, uint256 amount);
     event ProgramEdited(uint256 programId, uint256 price, uint256 startTime, uint256 endTime, address newValidator);
     event FeeUpdated(uint256 newFee);
@@ -96,7 +96,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     function acceptMilestone(
         uint256 programId,
-        uint256 milestoneId,
+        string memory milestoneId,
         address builder,
         uint256 reward
     ) external nonReentrant {
@@ -104,7 +104,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         require(msg.sender == program.validator, "Not validator");
         require(program.approve, "Program not approved");
         require(reward <= program.price, "Reward exceeds program balance");
-
         (bool sent, ) = payable(builder).call{value: reward}("");
         require(sent, "ETH transfer failed");
 
