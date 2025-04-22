@@ -92,8 +92,8 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         EduProgram storage program = eduPrograms[programId];
         require(msg.sender == program.validator, "Not validator");
         require(reward <= program.price, "Reward exceeds program balance");
-        (bool sent, ) = payable(builder).call{value: reward}("");
-        require(sent, "ETH transfer failed");
+        require(address(this).balance >= reward, "Insufficient contract balance");
+        payable(builder).transfer(reward);
 
         program.price -= reward; 
 
