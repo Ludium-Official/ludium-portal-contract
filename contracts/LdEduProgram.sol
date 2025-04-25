@@ -94,8 +94,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         require(reward <= program.price, "Reward exceeds program balance");
         require(address(this).balance >= reward, "Insufficient contract balance");
 
-        (bool sent, ) = payable(builder).call{value: reward}("");
-        require(sent, "transfer failed");
+        payable(builder).transfer(reward);
         program.price -= reward; 
 
         emit MilestoneAccepted(programId, milestoneId, builder, reward);
