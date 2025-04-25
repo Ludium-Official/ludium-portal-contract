@@ -99,10 +99,14 @@ async function createProgram() {
 }
 
 
-async function acceptMilestone(programId, milestoneId, builder, reward) {
+async function acceptMilestone() {
   try {
-    const milestoneReward = ethers.utils.parseEther(reward);
-    const tx = await contract.acceptMilestone(programId, milestoneId, builder, { value: milestoneReward });
+
+    const milestoneReward = ethers.utils.parseEther("0.0003");
+    const programId = 1;
+    const milestoneId = "id";
+    const builder = BUILDER_ADDRESS;
+    const tx = await contract.acceptMilestone(programId, milestoneId, builder, milestoneReward);
     const receipt = await tx.wait();
     const event = receipt.events.find(e => e.event === "MilestoneAccepted");
     if (!event) throw new Error("MilestoneAccepted event not found");
@@ -157,8 +161,7 @@ async function main() {
         break;
 
       case 'accept-milestone':
-        if (!num1) throw new Error("Milestone ID is required");
-        await acceptMilestone(num1);
+        await acceptMilestone();
         break;
 
       case 'info':
