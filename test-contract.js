@@ -56,6 +56,7 @@ async function createProgram() {
     console.log("🌍 .env에서 불러온 VALIDATOR_ADDRESS:", process.env.VALIDATOR_ADDRESS);
     console.log("🌍 .env에서 불러온 RPCURL:", process.env.RPC_URL);
     console.log("🌍 .env에서 불러온 contractaddr:", process.env.CONTRACT_ADDRESS);
+    console.log("🌍 .env에서 불러온 chainId:", process.env.CHAIN_ID);
 
 
     console.log(`이름: ${programName}`);
