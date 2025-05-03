@@ -23,16 +23,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     }
 
 
-    struct Milestone {
-        uint256 id;
-        string name;
-        string description;
-        uint256 price;
-        string[] links;
-        uint256 applicationId;
-    }
-
-
     mapping(uint256 => EduProgram) public eduPrograms;
     uint256 public nextProgramId;
     uint256 private fee;
