@@ -133,6 +133,7 @@ async function getProgramInfo(programId) {
     console.log(`종료: ${new Date(program.endTime.toNumber() * 1000).toLocaleString()}`);
     console.log(`생성자: ${program.maker}`);
     console.log(`벨리데이터: ${program.validator}`);
+    console.log("contractaddr:", process.env.CONTRACT_ADDRESS);
     console.log(`승인 여부: ${program.approve ? '승인됨' : '미승인'}`);
     console.log(`청구 여부: ${program.claimed ? '청구됨' : '미청구'}`);
     console.log(`빌더: ${program.builder === '0x0000000000000000000000000000000000000000' ? '없음' : program.builder}`);

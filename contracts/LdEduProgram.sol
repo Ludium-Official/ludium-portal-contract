@@ -6,7 +6,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 
 contract LdEduProgram is Ownable, ReentrancyGuard {
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price);
-    event MilestoneAccepted(uint256 indexed programId, string indexed milestoneId, address indexed builder, uint256 reward);
+    event MilestoneAccepted(uint256 indexed programId, address indexed builder, uint256 reward);
     event FundsReclaimed(uint256 indexed id, address maker, uint256 amount);
     event ProgramEdited(uint256 programId, uint256 price, uint256 startTime, uint256 endTime, address newValidator);
     event FeeUpdated(uint256 newFee);
@@ -14,16 +14,11 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     struct EduProgram {
         uint256 id;
         string name;
-        string[] keywords;
         uint256 price;
         uint256 startTime;
         uint256 endTime;
-        string summary;
-        string description;
-        string[] links;
         address maker;
         address validator;
-        bool approve;
         bool claimed;
     }
 
@@ -50,13 +45,9 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     function createEduProgram(
         string memory _name,
         uint256 _price,
-        string [] memory _keywords,
         uint256 _startTime,
         uint256 _endTime,
-        address _validator,
-        string memory _summary,
-        string memory _description,
-        string[] memory _links
+        address _validator
     ) external payable {
         require(msg.value == _price, "The ETH sent does not match the program price");
         require(_startTime < _endTime, "The Start time must be earlier than the end time.");
@@ -66,16 +57,11 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         eduPrograms[programId] = EduProgram({
             id: programId,
             name: _name,
-            keywords: _keywords,
             price: _price,
             startTime: _startTime,
             endTime: _endTime,
-            summary: _summary,
-            description: _description,
-            links: _links,
             maker: msg.sender,
             validator: _validator,
-            approve: false,
             claimed: false
         });
         nextProgramId++;
@@ -85,7 +71,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     function acceptMilestone(
         uint256 programId,
-        string memory milestoneId,
         address builder,
         uint256 reward
     ) external nonReentrant {
@@ -98,7 +83,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         require(sent, "Transfer failed");
         program.price -= reward; 
 
-        emit MilestoneAccepted(programId, milestoneId, builder, reward);
+        emit MilestoneAccepted(programId, builder, reward);
     }
 
 
