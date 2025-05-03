@@ -1,6 +1,6 @@
 # 📚 LdEduProgram Smart Contract
 
-The LdEduProgram smart contract manages educational programs and ensures transparent reward distribution between sponsors and developers.
+LdEduProgram 스마트 컨트랙트는 교육 프로그램을 관리하고, 제작자와 개발자 간의 보상을 투명하게 분배하는 역할을 합니다.
 
 ## 🚀 Features
 
@@ -24,25 +24,25 @@ cd ludium-portal-contract
 npm install
 ```
 
-### **SmartContract Compile**
+### ⚙️ 스마트 컨트랙트 컴파일
+```
 * remix
 * foundry
 * hardhat
 * vanila javascript
 
-```
+
 hardhat
 nvm use 20 
 npx hardhat clean
 npx hardhat compile
+
+생성된 abi파일을 abi폴더에 복제해야함
+artifacts/contracts/LdEduProgram.sol/LdEduProgram.json
+
 ```
 
-**Copy the generated ABI file to the abi folder from**
-```artifacts/contracts/LdEduProgram.sol/LdEduProgram.json```
-
-
-
-### **Deploy Smart Contract**
+### ⚙️ 스마트 컨트랙트 배포
 ```
 node test-contract.js deploy
 ```
@@ -53,55 +53,55 @@ node test-contract.js deploy
 ludium-portal-contract/
 ├── abi/
 │   └── LdEduProgram.json            # ABI 
-├── artifacts/                       #  Compilation 
+├── artifacts/                       #  컴파일 결과
 ├── contracts/
-│   └── LdEduProgram.sol             # Smart Contract 
+│   └── LdEduProgram.sol             # 스마트 컨트랙트
 ├── .gitignore
 ├── package.json
 ├── package-lock.json
-├── README.md                        # Project Guide
-└── test-contract.js                 # Test script
+├── README.md                        # 프로젝트 설명
+└── test-contract.js                 # 테스트 실행
 ```
 
-## 📌 Function Overview
-| Function | Description |
+## 📌 기능
+| 기능 | 설명 |
 |------|------|
-| `createEduProgram` | Creates an educational program |
-| `acceptMilestone` | Validator approves a milestone |
-| `updateProgram` | Sponsor updates the program (reward, dates, validator) |
-| `reclaimFunds` | Returns rewards to sponsor after program ends |
+| `createEduProgram` | 교육 프로그램을 생성 |
+| `acceptMilestone` | 벨리데이터가 마일스톤을 승인 |
+| `updateProgram` | 스폰서가 프로그램을 수정 - 상금, 날짜, validator |
+| `reclaimFunds` | 프로그램 만료 후 상금 반환 |
 
 ---
 
 
 
-### Events
-| event | description |
+### 주요 이벤트
+| 이벤트 | 설명 |
 |------|------|
-| ProgramCreated |   Emitted when a new program is created
-|MilestoneAccepted |   Emitted when a validator approves a milestone
-|ProgramEdited |   Emitted when a program is updated 
-|FundsReclaimed |   Emitted when sponsor reclaims remaining rewards
+| ProgramCreated |   프로그램이 생성될 때 발생
+|MilestoneAccepted |   벨리데이터가 마일스톤 승인할 때 발생
+|ProgramEdited |   프로그램 수정할 때 발생 
+|FundsReclaimed |   스폰서에게 보상 돌아갈 때 발생
 
 
 ### Test
 ```
-# create program
+# 프로그램 생성
 node test-contract.js create
 
-# accept milestone 
+# 마일스톤 승인
 node test-contract.js accept-milestone {programId}
 
-# reclaim funds
+# 상금 회수 요청
 node test-contract.js reclaim {programId}
 
-# update program
+# 프로그램 수정
 node test-contract.js update-program {programId}
 
-# fetch program info 
+# 프로그램 정보 조회
 node test-contract.js info {programId}
 
-# help
+# 도움말
 node test-contract.js
 ```
 
@@ -117,8 +117,7 @@ WEPIN_APP_ID=
 WEPIN_APP_KEY=
 ```
 
-
-### Result 
+### 테스트 실행 결과
 ``` 
 📝 reating a program...
 Name: Ludium Program Test
