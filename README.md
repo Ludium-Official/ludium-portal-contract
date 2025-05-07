@@ -64,6 +64,8 @@ ludium-portal-contract/
 ```
 
 ## 📌 Function Overview
+![LdEduProgram Flow](./ludiumStructure.png)
+
 | Function | Description |
 |------|------|
 | `createEduProgram` | Creates an educational program |

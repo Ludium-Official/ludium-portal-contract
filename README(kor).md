@@ -64,6 +64,8 @@ ludium-portal-contract/
 ```
 
 ## 📌 기능
+![LdEduProgram Flow](./ludiumStructure.png)
+
 | 기능 | 설명 |
 |------|------|
 | `createEduProgram` | 교육 프로그램을 생성 |
