@@ -349,3 +349,215 @@ token: [USDC 주소]
 **해결**: USDC 프로그램 생성 전에 반드시 approve 실행
 
 이 가이드를 따라하면 REMIX에서 완벽한 ETH + 스테이블코인 이중 결제 시스템을 테스트할 수 있습니다! 🎉
+
+# LdEduProgram 테스트 가이드
+
+## 🚀 빠른 시작
+
+### 1. 설치
+
+```bash
+npm install ethers dotenv @openzeppelin/contracts
+```
+
+### 2. 환경 설정
+
+`.env` 파일을 생성하고 다음 정보를 입력:
+
+```bash
+RPC_URL=https://rpc.open-campus-codex.gelato.digital
+CHAIN_ID=656476
+PRIVATE_KEY=0x당신의개인키
+VALIDATOR_PRIVATE_KEY=0x검증자개인키
+BUILDER_PRIVATE_KEY=0x빌더개인키
+```
+
+### 3. 컨트랙트 컴파일 및 ABI 생성
+
+```bash
+# Solidity 컴파일러로 컨트랙트 컴파일
+# abi/ 폴더에 LdEduProgram.json, TestUSDC.json 파일 생성
+```
+
+### 4. 배포
+
+```bash
+node scripts/deploy.js
+```
+
+### 5. 전체 테스트 실행
+
+```bash
+node test/complete-test.js full-test
+```
+
+## 📋 상세 사용법
+
+### 개별 테스트 명령어
+
+#### 1. 컨트랙트 배포
+
+```bash
+node test/complete-test.js deploy
+```
+
+#### 2. 기존 컨트랙트 연결
+
+```bash
+node test/complete-test.js connect
+```
+
+#### 3. USDC 배포
+
+```bash
+node test/complete-test.js distribute-usdc
+```
+
+#### 4. ETH 프로그램 생성
+
+```bash
+node test/complete-test.js create-eth
+```
+
+#### 5. USDC 프로그램 생성
+
+```bash
+node test/complete-test.js create-usdc
+```
+
+#### 6. ETH 마일스톤 지급
+
+```bash
+node test/complete-test.js eth-milestone 0
+```
+
+#### 7. USDC 마일스톤 지급
+
+```bash
+node test/complete-test.js usdc-milestone 1
+```
+
+#### 8. 프로그램 정보 조회
+
+```bash
+node test/complete-test.js info 0
+```
+
+#### 9. 컨트랙트 잔액 확인
+
+```bash
+node test/complete-test.js balances
+```
+
+## 🧪 테스트 시나리오
+
+### 전체 테스트 시나리오 (`full-test`)
+
+1. **컨트랙트 배포/연결**
+2. **USDC 배포** - 각 계정에 10,000 USDC 지급
+3. **ETH 프로그램 테스트**:
+   - 0.1 ETH로 프로그램 생성
+   - 0.05 ETH 마일스톤 지급
+4. **USDC 프로그램 테스트**:
+   - 1000 USDC로 프로그램 생성
+   - 500 USDC 마일스톤 지급
+5. **결과 확인**:
+   - 프로그램 정보 조회
+   - 컨트랙트 잔액 확인
+
+### 예상 결과
+
+```
+🎉 전체 테스트 완료!
+
+📋 최종 상태:
+- ETH 프로그램: 0.05 ETH 남음
+- USDC 프로그램: 500 USDC 남음
+- Builder 잔액: +0.05 ETH, +500 USDC
+```
+
+## 🔧 트러블슈팅
+
+### 자주 발생하는 오류
+
+#### 1. "insufficient funds for gas"
+
+**해결**: 배포 계정에 충분한 ETH가 있는지 확인
+
+#### 2. "Token not whitelisted"
+
+**해결**: USDC가 화이트리스트에 추가되었는지 확인
+
+```bash
+# 수동으로 화이트리스트 추가
+node -e "
+const { ethers } = require('ethers');
+// 화이트리스트 추가 코드
+"
+```
+
+#### 3. "Not validator"
+
+**해결**: 올바른 validator 개인키가 설정되었는지 확인
+
+#### 4. ABI 파일 없음
+
+**해결**:
+
+1. Solidity 컴파일러로 컨트랙트 컴파일
+2. `abi/` 폴더에 JSON 파일들 배치
+
+## 📁 프로젝트 구조
+
+```
+├── contracts/
+│   ├── LdEduProgram.sol
+│   └── TestUSDC.sol
+├── abi/
+│   ├── LdEduProgram.json
+│   └── TestUSDC.json
+├── test/
+│   └── complete-test.js
+├── scripts/
+│   └── deploy.js
+├── .env
+├── package.json
+└── deployment-info.json
+```
+
+## 📊 테스트 결과 예시
+
+### 성공적인 전체 테스트 출력:
+
+```
+🚀 전체 테스트 시작!
+
+🔧 테스터 초기화 완료
+👤 Owner: 0xAbc...123
+👤 Validator: 0xDef...456
+👤 Builder: 0x789...Abc
+
+🚀 컨트랙트 배포 시작...
+✅ 배포 완료!
+📍 LdEduProgram: 0x123...abc
+📍 TestUSDC: 0x456...def
+
+💰 USDC 배포 중...
+✅ 각 계정에게 10,000 USDC 전송
+
+🧪 ETH 프로그램 생성 테스트...
+🎉 ETH 프로그램 생성 완료! 프로그램 ID: 0
+
+🧪 ETH 마일스톤 지급 테스트...
+✅ ETH 마일스톤 지급 완료! (0.05 ETH)
+
+🧪 USDC 프로그램 생성 테스트...
+🎉 USDC 프로그램 생성 완료! 프로그램 ID: 1
+
+🧪 USDC 마일스톤 지급 테스트...
+✅ USDC 마일스톤 지급 완료! (500.0 USDC)
+
+🎉 전체 테스트 완료!
+```
+
+이 테스트 시스템으로 ETH와 USDC 결제가 모두 정상적으로 작동하는지 완전히 검증할 수 있습니다! 🚀
