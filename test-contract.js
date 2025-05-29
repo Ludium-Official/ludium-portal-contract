@@ -177,16 +177,9 @@ class LdEduProgramTester {
       const programData = {
         name: "Learn Solidity Fundamentals",
         price: parseEther("0.1"),
-        keywords: ["solidity", "blockchain", "smart-contracts"],
         startTime: Math.floor(Date.now() / 1000) + 300, // 5분 후
         endTime: Math.floor(Date.now() / 1000) + 604800, // 1주일 후
         validator: this.validatorWallet.address,
-        summary: "Complete guide to Solidity programming",
-        description: "Learn Solidity from basics to advanced concepts",
-        links: [
-          "https://docs.soliditylang.org",
-          "https://github.com/ethereum/solidity",
-        ],
         token: ZeroAddress, // ETH
       };
 
@@ -198,13 +191,9 @@ class LdEduProgramTester {
       const tx = await this.ldEduProgram.createEduProgram(
         programData.name,
         programData.price,
-        programData.keywords,
         programData.startTime,
         programData.endTime,
         programData.validator,
-        programData.summary,
-        programData.description,
-        programData.links,
         programData.token,
         { value: programData.price }
       );
@@ -239,13 +228,9 @@ class LdEduProgramTester {
       const programData = {
         name: "DeFi Development Course",
         price: parseUnits("1000", 6), // 1000 USDC
-        keywords: ["defi", "yield-farming", "liquidity"],
         startTime: Math.floor(Date.now() / 1000) + 300,
         endTime: Math.floor(Date.now() / 1000) + 604800,
         validator: this.validatorWallet.address,
-        summary: "Learn DeFi protocol development",
-        description: "Build DeFi protocols using modern tools",
-        links: ["https://defi.org", "https://compound.finance"],
         token: await this.usdc.getAddress(),
       };
 
@@ -267,13 +252,9 @@ class LdEduProgramTester {
       const tx = await this.ldEduProgram.createEduProgram(
         programData.name,
         programData.price,
-        programData.keywords,
         programData.startTime,
         programData.endTime,
         programData.validator,
-        programData.summary,
-        programData.description,
-        programData.links,
         programData.token
       );
 
@@ -307,7 +288,6 @@ class LdEduProgramTester {
       );
 
       const reward = parseEther("0.05");
-      const milestoneId = "milestone-1";
 
       // Builder의 초기 잔액 확인
       const builderBalanceBefore = await this.provider.getBalance(
@@ -321,7 +301,6 @@ class LdEduProgramTester {
       const validatorContract = this.ldEduProgram.connect(this.validatorWallet);
       const tx = await validatorContract.acceptMilestone(
         programId,
-        milestoneId,
         this.builderWallet.address,
         reward
       );

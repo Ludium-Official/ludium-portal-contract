@@ -125,13 +125,9 @@ LdEduProgram.createEduProgram
 Parameters:
 _name: Learn Solidity Fundamentals
 _price: 100000000000000000
-_keywords: ["solidity","blockchain","smart-contracts"]
 _startTime: 1735200000
 _endTime: 1735804800
 _validator: 0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db
-_summary: Complete guide to Solidity programming
-_description: Learn Solidity from basics to advanced concepts
-_links: ["https://docs.soliditylang.org"]
 _token: 0x0000000000000000000000000000000000000000
 
 💰 VALUE: 100000000000000000 (0.1 ETH)
@@ -203,13 +199,9 @@ LdEduProgram.createEduProgram
 Parameters:
 _name: DeFi Development Course
 _price: 100000000
-_keywords: ["defi","yield-farming","liquidity"]
 _startTime: 1735200000
 _endTime: 1735804800
 _validator: 0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db
-_summary: Learn DeFi protocol development
-_description: Build DeFi protocols using modern tools
-_links: ["https://defi.org"]
 _token: 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4
 
 💰 VALUE: 0 (ETH 전송하지 않음!)

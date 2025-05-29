@@ -10,7 +10,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     event ProgramCreated(uint256 indexed id, address indexed maker, address indexed validator, uint256 price, address token);
-    event MilestoneAccepted(uint256 indexed programId, string indexed milestoneId, address indexed builder, uint256 reward, address token);
+    event MilestoneAccepted(uint256 indexed programId, address indexed builder, uint256 reward, address token);
     event FundsReclaimed(uint256 indexed id, address maker, uint256 amount, address token);
     event ProgramEdited(uint256 programId, uint256 price, uint256 startTime, uint256 endTime, address newValidator);
     event FeeUpdated(uint256 newFee);
@@ -19,17 +19,13 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     struct EduProgram {
         uint256 id;
         string name;
-        string[] keywords;
         uint256 price;
         uint256 startTime;
         uint256 endTime;
-        string summary;
-        string description;
-        string[] links;
         address maker;
         address validator;
-        bool approve;
         bool claimed;
+        bool approve;
         address token; // 토큰 주소 (address(0)이면 ETH)
     }
 
@@ -50,7 +46,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     // ETH를 나타내는 상수
     address public constant ETH_ADDRESS = address(0);
 
-    constructor(address initialOwner) Ownable() {
+    constructor(address initialOwner) Ownable(initialOwner) {
         // ETH는 기본적으로 허용
         whitelistedTokens[ETH_ADDRESS] = true;
     }
@@ -64,13 +60,9 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
     function createEduProgram(
         string memory _name,
         uint256 _price,
-        string[] memory _keywords,
         uint256 _startTime,
         uint256 _endTime,
         address _validator,
-        string memory _summary,
-        string memory _description,
-        string[] memory _links,
         address _token //토큰 주소, eth의 경우 address(0)
     ) external payable {
         require(whitelistedTokens[_token], "Token not whitelisted");
@@ -91,13 +83,9 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         eduPrograms[programId] = EduProgram({
             id: programId,
             name: _name,
-            keywords: _keywords,
             price: _price,
             startTime: _startTime,
             endTime: _endTime,
-            summary: _summary,
-            description: _description,
-            links: _links,
             maker: msg.sender,
             validator: _validator,
             approve: false,
@@ -111,7 +99,6 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
 
     function acceptMilestone(
         uint256 programId,
-        string memory milestoneId,
         address builder,
         uint256 reward
     ) external nonReentrant {
@@ -132,7 +119,7 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
         }
 
         program.price -= reward;
-        emit MilestoneAccepted(programId, milestoneId, builder, reward, program.token);
+        emit MilestoneAccepted(programId, builder, reward, program.token);
     }
 
     function reclaimFunds(uint256 programId) external nonReentrant {
@@ -224,13 +211,5 @@ contract LdEduProgram is Ownable, ReentrancyGuard {
             program.token,
             program.claimed
         );
-    }
-
-    function getProgramKeywords(uint256 programId) external view returns (string[] memory) {
-        return eduPrograms[programId].keywords;
-    }
-
-    function getProgramLinks(uint256 programId) external view returns (string[] memory) {
-        return eduPrograms[programId].links;
     }
 }
