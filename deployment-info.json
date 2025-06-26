@@ -1,0 +1,9 @@
+{
+  "network": "https://open-campus-codex-sepolia.drpc.org",
+  "deployer": "0x6e759B3B147FaF2E422cDAda8FA11A17DD544f36",
+  "contracts": {
+    "LdEduProgram": "0x3946136d9a868E4A69CA30FF7873a97005b9215A",
+    "TestUSDC": "0x18de503c81d9Acf7dBC25CDaEDda726b95134D2F"
+  },
+  "timestamp": "2025-05-27T14:17:36.641Z"
+}

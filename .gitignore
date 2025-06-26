@@ -2,3 +2,12 @@
 node_modules
 .deps/
 .qodo
+.states/
+contracts/artifacts/*/*.json
+contracts/artifacts/*/*.bin
+contracts/artifacts/*/*.abi
+contracts/artifacts/*/*.bin-runtime
+contracts/artifacts/*/*.abi-runtime
+contracts/artifacts/*/*.bin-runtime
+contracts/artifacts/*/*.abi-runtime
+contracts/artifacts/*
