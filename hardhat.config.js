@@ -15,7 +15,7 @@ module.exports = {
       viaIR: true,
     },
   },
-  defaultNetwork: 'arbitrumSepolia',
+  defaultNetwork: 'hardhat',
   networks: {
     arbitrumSepolia: {
       url: RPC_URL,

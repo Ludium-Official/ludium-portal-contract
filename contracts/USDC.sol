@@ -9,7 +9,8 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 contract USDC is ERC20, Ownable, ERC20Permit {
     constructor(
         address initialOwner
-    ) ERC20("USDC", "USDC") Ownable(initialOwner) ERC20Permit("USDC") {
+    ) ERC20("USDC", "USDC") ERC20Permit("USDC") {
+        _transferOwnership(initialOwner);
         // 초기 공급량: 1,000,000 USDC (6 decimals)
         _mint(initialOwner, 1000000 * 10 ** 6);
     }

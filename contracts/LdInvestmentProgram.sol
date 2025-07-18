@@ -2,13 +2,14 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
+contract LdInvestmentProgram is Ownable, AccessControl, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -41,6 +42,14 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         address indexed supporter,
         uint256 amount,
         uint256 totalFunded
+    );
+
+    event MilestoneApprovalAdded(
+        uint256 indexed projectId,
+        uint256 indexed milestoneId,
+        address indexed validator,
+        uint256 currentApprovals,
+        uint256 requiredApprovals
     );
 
     event MilestoneAccepted(
@@ -108,12 +117,56 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     event EmergencyPaused(address account);
     event EmergencyUnpaused(address account);
 
+    event TimeLockOperationQueued(
+        bytes32 indexed operationId,
+        address indexed target,
+        uint256 value,
+        bytes data,
+        uint256 executeAfter,
+        string description
+    );
+
+    event TimeLockOperationExecuted(
+        bytes32 indexed operationId,
+        address indexed target,
+        uint256 value,
+        bytes data
+    );
+
+    event TimeLockOperationCancelled(
+        bytes32 indexed operationId
+    );
+
+    event ProjectTermAdded(
+        uint256 indexed projectId,
+        uint256 indexed termId,
+        string title,
+        uint256 minInvestment,
+        uint256 maxInvestment,
+        uint256 purchaseLimit
+    );
+
+    event ProjectTermUpdated(
+        uint256 indexed projectId,
+        uint256 indexed termId,
+        string title,
+        bool isActive
+    );
+
+    event SupporterTermClaimed(
+        uint256 indexed projectId,
+        uint256 indexed termId,
+        address indexed supporter,
+        uint256 investmentAmount
+    );
+
     // Enums
     enum ProgramStatus {
         Ready, // Before applications start
         ApplicationOngoing, // Accepting project applications
         ApplicationClosed, // Applications closed but funding not started
         FundingOngoing, // Investment period
+        Pending, // 1-day period after funding ends before fee claiming
         ProjectOngoing, // Projects in progress
         ProgramCompleted // All projects completed or failed
     }
@@ -178,6 +231,10 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         // Gas optimization: Cache failed milestone check
         bool hasFailedMilestone;
         uint256 lastMilestoneCheck;
+        // Project terms for supporter benefits
+        mapping(uint256 => ProjectTerm) terms; // term ID => term details
+        uint256 termCount; // Number of terms created for this project
+        mapping(address => SupporterTerms) supporterTerms; // supporter => their claimed terms
     }
 
     struct Milestone {
@@ -189,12 +246,27 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         bool completed;
         bool paid;
         uint256 amount; // Calculated amount based on percentage
+        mapping(address => bool) validatorApprovals; // validator => has approved
+        uint256 approvalCount; // Number of approvals received
+        uint256 requiredApprovals; // Required number of approvals (copied from program)
     }
 
     struct TierInfo {
         string tierName;
         uint256 maxInvestment;
         bool isAssigned;
+    }
+
+    struct ProjectTerm {
+        uint256 id;
+        string title;
+        string description;
+        uint256 minInvestment; // Minimum investment amount to qualify for this term
+        uint256 maxInvestment; // Maximum investment amount for this term (0 = no limit)
+        uint256 purchaseLimit; // Maximum number of supporters that can claim this term (0 = no limit)
+        uint256 currentPurchases; // Current number of supporters who have claimed this term
+        bool isActive; // Whether this term is currently active
+        string benefits; // Description of benefits (e.g., "AA NFT + 10,000 AA Tokens")
     }
 
     struct ValidationRequest {
@@ -206,11 +278,34 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         bool processed;
     }
 
+    struct SupporterTerms {
+        uint256[] claimedTermIds; // Array of term IDs this supporter has claimed
+        mapping(uint256 => bool) hasClaimedTerm; // termId => whether supporter has claimed this term
+    }
+
     struct MilestoneData {
         string title;
         string description;
         uint256 percentage;
         uint256 deadline;
+    }
+
+    struct TimeLockOperation {
+        bytes32 operationId;
+        address target;
+        bytes data;
+        uint256 value;
+        uint256 executeAfter;
+        bool executed;
+        bool cancelled;
+        string description;
+    }
+
+    enum OperationType {
+        EmergencyWithdraw,
+        ProgramStatusChange,
+        ProjectStatusChange,
+        ValidatorChange
     }
 
     // State variables
@@ -224,12 +319,30 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     uint256 public nextValidationRequestId;
     uint256 private defaultFeePercentage = 300; // 3%
 
+    // Time-lock state
+    mapping(bytes32 => TimeLockOperation) public timeLockOperations;
+    uint256 public nextOperationId;
+
     // ETH address constant
     address public constant ETH_ADDRESS = address(0);
 
     // Circuit breaker thresholds
     uint256 public constant MAX_VALIDATORS_PER_PROGRAM = 50; // Prevent excessive gas costs
     uint256 public constant MAX_MILESTONES_PER_PROJECT = 20; // Prevent excessive gas costs
+    
+    // Pending period duration (1 day in seconds)
+    uint256 public constant PENDING_PERIOD_DURATION = 1 days;
+    
+    // Time-lock duration for critical operations (2 days)
+    uint256 public constant TIMELOCK_DURATION = 2 days;
+
+    // Role definitions for access control
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 public constant PROGRAM_MANAGER_ROLE = keccak256("PROGRAM_MANAGER_ROLE");
+    bytes32 public constant VALIDATOR_MANAGER_ROLE = keccak256("VALIDATOR_MANAGER_ROLE");
+    bytes32 public constant TOKEN_MANAGER_ROLE = keccak256("TOKEN_MANAGER_ROLE");
+    bytes32 public constant EMERGENCY_ROLE = keccak256("EMERGENCY_ROLE");
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
     // Modifiers
     modifier onlyProgramHost(uint256 programId) {
@@ -277,17 +390,196 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         _;
     }
 
-    constructor(address initialOwner) Ownable(initialOwner) {
+    // Role-based access control modifiers
+    modifier onlyAdmin() {
+        require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
+        _;
+    }
+
+    modifier onlyProgramManager() {
+        require(hasRole(PROGRAM_MANAGER_ROLE, msg.sender), "Caller is not a program manager");
+        _;
+    }
+
+    modifier onlyValidatorManager() {
+        require(hasRole(VALIDATOR_MANAGER_ROLE, msg.sender), "Caller is not a validator manager");
+        _;
+    }
+
+    modifier onlyTokenManager() {
+        require(hasRole(TOKEN_MANAGER_ROLE, msg.sender), "Caller is not a token manager");
+        _;
+    }
+
+    modifier onlyEmergencyRole() {
+        require(hasRole(EMERGENCY_ROLE, msg.sender), "Caller does not have emergency role");
+        _;
+    }
+
+    modifier onlyPauserRole() {
+        require(hasRole(PAUSER_ROLE, msg.sender), "Caller does not have pauser role");
+        _;
+    }
+
+    modifier onlyOwnerOrAdmin() {
+        require(
+            msg.sender == owner() || hasRole(ADMIN_ROLE, msg.sender),
+            "Caller is not owner or admin"
+        );
+        _;
+    }
+
+    constructor(address initialOwner) {
+        _transferOwnership(initialOwner);
+        
+        // Set up role hierarchy
+        _grantRole(DEFAULT_ADMIN_ROLE, initialOwner);
+        _grantRole(ADMIN_ROLE, initialOwner);
+        _grantRole(PROGRAM_MANAGER_ROLE, initialOwner);
+        _grantRole(VALIDATOR_MANAGER_ROLE, initialOwner);
+        _grantRole(TOKEN_MANAGER_ROLE, initialOwner);
+        _grantRole(EMERGENCY_ROLE, initialOwner);
+        _grantRole(PAUSER_ROLE, initialOwner);
+        
+        // Set role admins (who can grant/revoke roles)
+        _setRoleAdmin(ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(PROGRAM_MANAGER_ROLE, ADMIN_ROLE);
+        _setRoleAdmin(VALIDATOR_MANAGER_ROLE, ADMIN_ROLE);
+        _setRoleAdmin(TOKEN_MANAGER_ROLE, ADMIN_ROLE);
+        _setRoleAdmin(EMERGENCY_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(PAUSER_ROLE, ADMIN_ROLE);
+        
         whitelistedTokens[ETH_ADDRESS] = true;
     }
 
-    // Emergency pause function
-    function pause() external onlyOwner {
+    // ===== TIME-LOCK FUNCTIONS =====
+
+    /**
+     * @dev Queue a time-locked operation
+     * @param _target Target contract address
+     * @param _value ETH value to send
+     * @param _data Function call data
+     * @param _description Human-readable description
+     * @return operationId The unique operation ID
+     */
+    function queueTimeLockOperation(
+        address _target,
+        uint256 _value,
+        bytes memory _data,
+        string memory _description
+    ) public onlyOwnerOrAdmin returns (bytes32) {
+        bytes32 operationId = keccak256(
+            abi.encode(_target, _value, _data, block.timestamp, nextOperationId++)
+        );
+        
+        uint256 executeAfter = block.timestamp + TIMELOCK_DURATION;
+        
+        timeLockOperations[operationId] = TimeLockOperation({
+            operationId: operationId,
+            target: _target,
+            data: _data,
+            value: _value,
+            executeAfter: executeAfter,
+            executed: false,
+            cancelled: false,
+            description: _description
+        });
+        
+        emit TimeLockOperationQueued(
+            operationId,
+            _target,
+            _value,
+            _data,
+            executeAfter,
+            _description
+        );
+        
+        return operationId;
+    }
+
+    /**
+     * @dev Execute a time-locked operation
+     * @param _operationId The operation ID to execute
+     */
+    function executeTimeLockOperation(
+        bytes32 _operationId
+    ) external onlyOwnerOrAdmin nonReentrant {
+        TimeLockOperation storage operation = timeLockOperations[_operationId];
+        
+        require(operation.operationId != bytes32(0), "Operation does not exist");
+        require(!operation.executed, "Operation already executed");
+        require(!operation.cancelled, "Operation was cancelled");
+        require(
+            block.timestamp >= operation.executeAfter,
+            "Operation still in time-lock period"
+        );
+        
+        operation.executed = true;
+        
+        // Execute the operation
+        (bool success, ) = operation.target.call{value: operation.value}(operation.data);
+        require(success, "Time-locked operation execution failed");
+        
+        emit TimeLockOperationExecuted(
+            _operationId,
+            operation.target,
+            operation.value,
+            operation.data
+        );
+    }
+
+    /**
+     * @dev Cancel a time-locked operation
+     * @param _operationId The operation ID to cancel
+     */
+    function cancelTimeLockOperation(
+        bytes32 _operationId
+    ) external onlyOwner {
+        TimeLockOperation storage operation = timeLockOperations[_operationId];
+        
+        require(operation.operationId != bytes32(0), "Operation does not exist");
+        require(!operation.executed, "Operation already executed");
+        require(!operation.cancelled, "Operation already cancelled");
+        
+        operation.cancelled = true;
+        
+        emit TimeLockOperationCancelled(_operationId);
+    }
+
+    /**
+     * @dev Get time-lock operation details
+     * @param _operationId The operation ID
+     */
+    function getTimeLockOperation(
+        bytes32 _operationId
+    ) external view returns (
+        address target,
+        uint256 value,
+        bytes memory data,
+        uint256 executeAfter,
+        bool executed,
+        bool cancelled,
+        string memory description
+    ) {
+        TimeLockOperation storage operation = timeLockOperations[_operationId];
+        return (
+            operation.target,
+            operation.value,
+            operation.data,
+            operation.executeAfter,
+            operation.executed,
+            operation.cancelled,
+            operation.description
+        );
+    }
+
+    // Emergency pause function - now uses role-based access
+    function pause() external onlyPauserRole {
         _pause();
         emit EmergencyPaused(msg.sender);
     }
 
-    function unpause() external onlyOwner {
+    function unpause() external onlyPauserRole {
         _unpause();
         emit EmergencyUnpaused(msg.sender);
     }
@@ -541,6 +833,8 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         milestone.completed = false;
         milestone.paid = false;
         milestone.amount = 0; // Will be calculated when funding is successful
+        milestone.approvalCount = 0;
+        milestone.requiredApprovals = program.requiredApprovals;
 
         emit MilestoneAdded(
             _projectId,
@@ -589,6 +883,117 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         });
 
         emit TierAssigned(_projectId, _user, _tierName, _maxInvestment);
+    }
+
+    /**
+     * @dev Adds a new term to a project that defines supporter benefits
+     * @param _projectId Project ID
+     * @param _title Term title (e.g., "Gold Tier Benefits")
+     * @param _description Detailed description of the term
+     * @param _minInvestment Minimum investment amount to qualify for this term
+     * @param _maxInvestment Maximum investment amount for this term (0 = no limit)
+     * @param _purchaseLimit Maximum number of supporters that can claim this term (0 = no limit)
+     * @param _benefits Description of benefits (e.g., "AA NFT + 10,000 AA Tokens")
+     */
+    function addProjectTerm(
+        uint256 _projectId,
+        string memory _title,
+        string memory _description,
+        uint256 _minInvestment,
+        uint256 _maxInvestment,
+        uint256 _purchaseLimit,
+        string memory _benefits
+    )
+        external
+        validProject(_projectId)
+        onlyProjectOwner(_projectId)
+        whenNotPaused
+    {
+        Project storage project = projects[_projectId];
+        InvestmentProgram storage program = investmentPrograms[
+            project.programId
+        ];
+
+        require(
+            block.timestamp < program.fundingStartTime,
+            "Cannot add terms after funding starts"
+        );
+        require(bytes(_title).length > 0, "Term title cannot be empty");
+        require(bytes(_benefits).length > 0, "Benefits cannot be empty");
+        require(_minInvestment > 0, "Minimum investment must be greater than 0");
+        
+        if (_maxInvestment > 0) {
+            require(
+                _maxInvestment >= _minInvestment,
+                "Max investment must be >= min investment"
+            );
+        }
+
+        uint256 termId = project.termCount++;
+
+        ProjectTerm storage term = project.terms[termId];
+        term.id = termId;
+        term.title = _title;
+        term.description = _description;
+        term.minInvestment = _minInvestment;
+        term.maxInvestment = _maxInvestment;
+        term.purchaseLimit = _purchaseLimit;
+        term.currentPurchases = 0;
+        term.isActive = true;
+        term.benefits = _benefits;
+
+        emit ProjectTermAdded(
+            _projectId,
+            termId,
+            _title,
+            _minInvestment,
+            _maxInvestment,
+            _purchaseLimit
+        );
+    }
+
+    /**
+     * @dev Updates an existing project term
+     * @param _projectId Project ID
+     * @param _termId Term ID to update
+     * @param _title New term title
+     * @param _description New term description
+     * @param _benefits New benefits description
+     * @param _isActive Whether the term is active
+     */
+    function updateProjectTerm(
+        uint256 _projectId,
+        uint256 _termId,
+        string memory _title,
+        string memory _description,
+        string memory _benefits,
+        bool _isActive
+    )
+        external
+        validProject(_projectId)
+        onlyProjectOwner(_projectId)
+        whenNotPaused
+    {
+        Project storage project = projects[_projectId];
+        InvestmentProgram storage program = investmentPrograms[
+            project.programId
+        ];
+
+        require(
+            block.timestamp < program.fundingStartTime,
+            "Cannot update terms after funding starts"
+        );
+        require(_termId < project.termCount, "Term does not exist");
+        require(bytes(_title).length > 0, "Term title cannot be empty");
+        require(bytes(_benefits).length > 0, "Benefits cannot be empty");
+
+        ProjectTerm storage term = project.terms[_termId];
+        term.title = _title;
+        term.description = _description;
+        term.benefits = _benefits;
+        term.isActive = _isActive;
+
+        emit ProjectTermUpdated(_projectId, _termId, _title, _isActive);
     }
 
     // ===== VIEW FUNCTIONS =====
@@ -714,7 +1119,7 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @dev Gets milestone details
+     * @dev Gets milestone details including approval status
      * @param _projectId Project ID
      * @param _milestoneId Milestone ID
      * @return id Milestone ID
@@ -725,6 +1130,8 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
      * @return completed Whether milestone is completed
      * @return paid Whether milestone is paid
      * @return amount Milestone amount
+     * @return approvalCount Current number of approvals
+     * @return requiredApprovals Required number of approvals
      */
     function getMilestoneDetails(
         uint256 _projectId,
@@ -741,7 +1148,9 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
             uint256 deadline,
             bool completed,
             bool paid,
-            uint256 amount
+            uint256 amount,
+            uint256 approvalCount,
+            uint256 requiredApprovals
         )
     {
         Project storage project = projects[_projectId];
@@ -759,8 +1168,67 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
             milestone.deadline,
             milestone.completed,
             milestone.paid,
-            milestone.amount
+            milestone.amount,
+            milestone.approvalCount,
+            milestone.requiredApprovals
         );
+    }
+
+    /**
+     * @dev Checks if a validator has approved a specific milestone
+     * @param _projectId Project ID
+     * @param _milestoneId Milestone ID
+     * @param _validator Validator address
+     * @return Whether the validator has approved the milestone
+     */
+    function hasValidatorApprovedMilestone(
+        uint256 _projectId,
+        uint256 _milestoneId,
+        address _validator
+    ) external view validProject(_projectId) returns (bool) {
+        Project storage project = projects[_projectId];
+        require(
+            _milestoneId < project.milestoneCount,
+            "Milestone does not exist"
+        );
+        
+        return project.milestones[_milestoneId].validatorApprovals[_validator];
+    }
+
+    /**
+     * @dev Gets the list of validators who have approved a milestone
+     * @param _projectId Project ID
+     * @param _milestoneId Milestone ID
+     * @return Array of validator addresses who approved
+     */
+    function getMilestoneApprovers(
+        uint256 _projectId,
+        uint256 _milestoneId
+    ) external view validProject(_projectId) returns (address[] memory) {
+        Project storage project = projects[_projectId];
+        InvestmentProgram storage program = investmentPrograms[project.programId];
+        require(
+            _milestoneId < project.milestoneCount,
+            "Milestone does not exist"
+        );
+        
+        Milestone storage milestone = project.milestones[_milestoneId];
+        address[] memory approvers = new address[](milestone.approvalCount);
+        uint256 approverIndex = 0;
+        
+        // Iterate through all validators to find who approved
+        for (uint256 i = 0; i < program.validators.length; i++) {
+            address validator = program.validators[i];
+            if (milestone.validatorApprovals[validator]) {
+                approvers[approverIndex] = validator;
+                approverIndex++;
+                if (approverIndex >= milestone.approvalCount) {
+                    break; // Found all approvers
+                }
+            }
+        }
+        
+        return approvers;
     }
 
     /**
@@ -799,6 +1267,146 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
+     * @dev Gets project term details
+     * @param _projectId Project ID
+     * @param _termId Term ID
+     * @return id Term ID
+     * @return title Term title
+     * @return description Term description
+     * @return minInvestment Minimum investment amount
+     * @return maxInvestment Maximum investment amount
+     * @return purchaseLimit Purchase limit
+     * @return currentPurchases Current purchases
+     * @return isActive Whether term is active
+     * @return benefits Benefits description
+     */
+    function getProjectTermDetails(
+        uint256 _projectId,
+        uint256 _termId
+    )
+        external
+        view
+        validProject(_projectId)
+        returns (
+            uint256 id,
+            string memory title,
+            string memory description,
+            uint256 minInvestment,
+            uint256 maxInvestment,
+            uint256 purchaseLimit,
+            uint256 currentPurchases,
+            bool isActive,
+            string memory benefits
+        )
+    {
+        Project storage project = projects[_projectId];
+        require(_termId < project.termCount, "Term does not exist");
+
+        ProjectTerm storage term = project.terms[_termId];
+        return (
+            term.id,
+            term.title,
+            term.description,
+            term.minInvestment,
+            term.maxInvestment,
+            term.purchaseLimit,
+            term.currentPurchases,
+            term.isActive,
+            term.benefits
+        );
+    }
+
+    /**
+     * @dev Gets all term IDs for a project
+     * @param _projectId Project ID
+     * @return Array of term IDs
+     */
+    function getProjectTermIds(
+        uint256 _projectId
+    ) external view validProject(_projectId) returns (uint256[] memory) {
+        Project storage project = projects[_projectId];
+        uint256[] memory termIds = new uint256[](project.termCount);
+        
+        for (uint256 i = 0; i < project.termCount; i++) {
+            termIds[i] = i;
+        }
+        
+        return termIds;
+    }
+
+    /**
+     * @dev Gets supporter's claimed terms for a project
+     * @param _projectId Project ID
+     * @param _supporter Supporter address
+     * @return Array of claimed term IDs
+     */
+    function getSupporterClaimedTerms(
+        uint256 _projectId,
+        address _supporter
+    ) external view validProject(_projectId) returns (uint256[] memory) {
+        return projects[_projectId].supporterTerms[_supporter].claimedTermIds;
+    }
+
+    /**
+     * @dev Checks if supporter has claimed a specific term
+     * @param _projectId Project ID
+     * @param _supporter Supporter address
+     * @param _termId Term ID
+     * @return Whether supporter has claimed the term
+     */
+    function hasSupporterClaimedTerm(
+        uint256 _projectId,
+        address _supporter,
+        uint256 _termId
+    ) external view validProject(_projectId) returns (bool) {
+        Project storage project = projects[_projectId];
+        require(_termId < project.termCount, "Term does not exist");
+        return project.supporterTerms[_supporter].hasClaimedTerm[_termId];
+    }
+
+    /**
+     * @dev Checks if a user is eligible to invest in a project based on tier restrictions
+     * @param _projectId Project ID
+     * @param _user User address
+     * @param _amount Investment amount to check
+     * @return eligible Whether user can invest the specified amount
+     * @return reason Reason if not eligible
+     */
+    function isUserEligibleToInvest(
+        uint256 _projectId,
+        address _user,
+        uint256 _amount
+    ) 
+        external 
+        view 
+        validProject(_projectId) 
+        returns (bool eligible, string memory reason) 
+    {
+        Project storage project = projects[_projectId];
+        InvestmentProgram storage program = investmentPrograms[project.programId];
+
+        // Check if program uses tier restrictions
+        if (program.condition == InvestmentCondition.Tier) {
+            TierInfo storage tierInfo = project.tierAssignments[_user];
+            
+            if (!tierInfo.isAssigned) {
+                return (false, "User not assigned to any tier for this Tier-restricted program");
+            }
+            
+            if (project.supporters[_user] + _amount > tierInfo.maxInvestment) {
+                return (false, "Investment would exceed tier limit");
+            }
+        }
+
+        // Check funding target
+        if (project.totalFunded + _amount > project.fundingTarget) {
+            return (false, "Investment would exceed funding target");
+        }
+
+        return (true, "");
+    }
+
+    /**
      * @dev Gets list of all supporters for a project
      * @param _projectId Project ID
      * @return Array of supporter addresses
@@ -828,7 +1436,7 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     }
 
     // Token whitelist management
-    function setTokenWhitelist(address token, bool status) external onlyOwner {
+    function setTokenWhitelist(address token, bool status) external onlyTokenManager {
         whitelistedTokens[token] = status;
         emit TokenWhitelisted(token, status);
     }
@@ -872,8 +1480,13 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
             currentTime <= program.fundingEndTime
         ) {
             return ProgramStatus.FundingOngoing;
-        } else if (currentTime > program.fundingEndTime) {
-            // For post-funding, we need to check projects but this is expensive
+        } else if (
+            currentTime > program.fundingEndTime &&
+            currentTime <= program.fundingEndTime + PENDING_PERIOD_DURATION
+        ) {
+            return ProgramStatus.Pending;
+        } else if (currentTime > program.fundingEndTime + PENDING_PERIOD_DURATION) {
+            // For post-pending, we need to check projects but this is expensive
             // In practice, this should be called less frequently
             return _calculatePostFundingStatus(programId);
         }
@@ -1013,7 +1626,7 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     // Set default fee percentage
     function setDefaultFeePercentage(
         uint256 _feePercentage
-    ) external onlyOwner {
+    ) external onlyOwnerOrAdmin {
         require(_feePercentage <= 1000, "Fee percentage too high"); // Max 10%
         defaultFeePercentage = _feePercentage;
     }
@@ -1023,17 +1636,138 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         return defaultFeePercentage;
     }
 
-    // Emergency functions
-    function emergencyWithdraw(
+
+    // ===== TIME-LOCKED EMERGENCY FUNCTIONS =====
+
+    /**
+     * @dev Queue emergency withdraw operation (requires time-lock)
+     * @param token Token address (ETH_ADDRESS for ETH)
+     * @param amount Amount to withdraw
+     * @return operationId The time-lock operation ID
+     */
+    function queueEmergencyWithdraw(
         address token,
         uint256 amount
-    ) external onlyOwner {
+    ) external onlyEmergencyRole returns (bytes32) {
+        bytes memory data = abi.encodeWithSignature(
+            "_executeEmergencyWithdraw(address,uint256)",
+            token,
+            amount
+        );
+        
+        string memory description = string(
+            abi.encodePacked(
+                "Emergency withdraw ",
+                token == ETH_ADDRESS ? "ETH" : "ERC20",
+                " amount: ",
+                _uint2str(amount)
+            )
+        );
+        
+        return queueTimeLockOperation(
+            address(this),
+            0,
+            data,
+            description
+        );
+    }
+
+    /**
+     * @dev Internal function to execute emergency withdraw (called via time-lock)
+     * @param token Token address
+     * @param amount Amount to withdraw
+     */
+    function _executeEmergencyWithdraw(
+        address token,
+        uint256 amount
+    ) external {
+        require(msg.sender == address(this), "Only callable via time-lock");
+        
         if (token == ETH_ADDRESS) {
             (bool sent, ) = payable(owner()).call{value: amount}("");
             require(sent, "ETH transfer failed");
         } else {
             IERC20(token).safeTransfer(owner(), amount);
         }
+    }
+
+    /**
+     * @dev Queue program status change operation (requires time-lock)
+     * @param _programId Program ID
+     * @param _newStatus New program status
+     * @return operationId The time-lock operation ID
+     */
+    function queueProgramStatusChange(
+        uint256 _programId,
+        ProgramStatus _newStatus
+    ) external onlyProgramManager returns (bytes32) {
+        bytes memory data = abi.encodeWithSignature(
+            "_executeProgramStatusChange(uint256,uint8)",
+            _programId,
+            uint8(_newStatus)
+        );
+        
+        string memory description = string(
+            abi.encodePacked(
+                "Change program ",
+                _uint2str(_programId),
+                " status to ",
+                _uint2str(uint256(_newStatus))
+            )
+        );
+        
+        return queueTimeLockOperation(
+            address(this),
+            0,
+            data,
+            description
+        );
+    }
+
+    /**
+     * @dev Internal function to execute program status change (called via time-lock)
+     * @param _programId Program ID
+     * @param _newStatus New program status
+     */
+    function _executeProgramStatusChange(
+        uint256 _programId,
+        uint8 _newStatus
+    ) external validProgram(_programId) {
+        require(msg.sender == address(this), "Only callable via time-lock");
+        
+        InvestmentProgram storage program = investmentPrograms[_programId];
+        ProgramStatus oldStatus = program.status;
+        program.status = ProgramStatus(_newStatus);
+        program.statusCacheValid = false;
+
+        emit ProgramStatusChanged(_programId, oldStatus, ProgramStatus(_newStatus));
+    }
+
+    /**
+     * @dev Helper function to convert uint to string
+     * @param _i Number to convert
+     * @return String representation
+     */
+    function _uint2str(uint256 _i) internal pure returns (string memory) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint256 j = _i;
+        uint256 len;
+        while (j != 0) {
+            len++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(len);
+        uint256 k = len;
+        while (_i != 0) {
+            k = k - 1;
+            uint8 temp = (48 + uint8(_i - _i / 10 * 10));
+            bytes1 b1 = bytes1(temp);
+            bstr[k] = b1;
+            _i /= 10;
+        }
+        return string(bstr);
     }
 
     function getContractBalance(address token) external view returns (uint256) {
@@ -1184,16 +1918,17 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
 
         // Add milestones
         for (uint256 i = 0; i < _milestones.length; i++) {
-            project.milestones[i] = Milestone({
-                id: i,
-                title: _milestones[i].title,
-                description: _milestones[i].description,
-                percentage: _milestones[i].percentage,
-                deadline: _milestones[i].deadline,
-                completed: false,
-                paid: false,
-                amount: 0 // Will be calculated when funding is successful
-            });
+            Milestone storage milestone = project.milestones[i];
+            milestone.id = i;
+            milestone.title = _milestones[i].title;
+            milestone.description = _milestones[i].description;
+            milestone.percentage = _milestones[i].percentage;
+            milestone.deadline = _milestones[i].deadline;
+            milestone.completed = false;
+            milestone.paid = false;
+            milestone.amount = 0; // Will be calculated when funding is successful
+            milestone.approvalCount = 0;
+            milestone.requiredApprovals = program.requiredApprovals;
         }
 
         // Add project to program
@@ -1280,7 +2015,7 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         // Check tier restrictions
         if (program.condition == InvestmentCondition.Tier) {
             TierInfo storage tierInfo = project.tierAssignments[msg.sender];
-            require(tierInfo.isAssigned, "User not assigned to any tier");
+            require(tierInfo.isAssigned, "User not assigned to any tier for this Tier-restricted program");
             require(
                 project.supporters[msg.sender] + investmentAmount <=
                     tierInfo.maxInvestment,
@@ -1306,6 +2041,9 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
             project.fundingSuccessful = true;
             _calculateMilestoneAmounts(_projectId);
         }
+
+        // Check and claim applicable terms
+        _checkAndClaimTerms(_projectId, msg.sender, project.supporters[msg.sender]);
 
         emit InvestmentMade(
             _projectId,
@@ -1352,7 +2090,7 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         // Check tier restrictions
         if (program.condition == InvestmentCondition.Tier) {
             TierInfo storage tierInfo = project.tierAssignments[msg.sender];
-            require(tierInfo.isAssigned, "User not assigned to any tier");
+            require(tierInfo.isAssigned, "User not assigned to any tier for this Tier-restricted program");
             require(
                 project.supporters[msg.sender] + _amount <=
                     tierInfo.maxInvestment,
@@ -1385,6 +2123,9 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
             project.fundingSuccessful = true;
             _calculateMilestoneAmounts(_projectId);
         }
+
+        // Check and claim applicable terms
+        _checkAndClaimTerms(_projectId, msg.sender, project.supporters[msg.sender]);
 
         emit InvestmentMade(
             _projectId,
@@ -1475,8 +2216,8 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         InvestmentProgram storage program = investmentPrograms[_programId];
 
         require(
-            block.timestamp > program.fundingEndTime,
-            "Funding period not ended"
+            block.timestamp > program.fundingEndTime + PENDING_PERIOD_DURATION,
+            "Pending period not ended, must wait 1 day after funding ends"
         );
         require(!program.feeClaimed, "Fee already claimed");
 
@@ -1516,14 +2257,14 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     // ===== MILESTONE FUNCTIONS WITH PAUSE PROTECTION =====
 
     /**
-     * @dev Validator accepts a milestone and pays out to project owner
+     * @dev Validator adds approval for a milestone (multi-signature required)
      * @param _projectId Project ID
      * @param _milestoneId Milestone ID
      */
-    function acceptMilestone(
+    function approveMilestone(
         uint256 _projectId,
         uint256 _milestoneId
-    ) external validProject(_projectId) nonReentrant whenNotPaused {
+    ) external validProject(_projectId) whenNotPaused {
         Project storage project = projects[_projectId];
         InvestmentProgram storage program = investmentPrograms[
             project.programId
@@ -1540,6 +2281,10 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
             "Project funding was not successful"
         );
         require(
+            getProgramStatus(project.programId) != ProgramStatus.Pending,
+            "Cannot approve milestones during pending period"
+        );
+        require(
             block.timestamp > program.fundingEndTime,
             "Funding period not ended"
         );
@@ -1551,6 +2296,51 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
             block.timestamp <= milestone.deadline,
             "Milestone deadline passed"
         );
+        require(
+            !milestone.validatorApprovals[msg.sender],
+            "Validator already approved this milestone"
+        );
+
+        // Add validator approval
+        milestone.validatorApprovals[msg.sender] = true;
+        milestone.approvalCount++;
+
+        emit MilestoneApprovalAdded(
+            _projectId,
+            _milestoneId,
+            msg.sender,
+            milestone.approvalCount,
+            milestone.requiredApprovals
+        );
+
+        // Check if we have enough approvals to complete the milestone
+        if (milestone.approvalCount >= milestone.requiredApprovals) {
+            _executeMilestonePayout(_projectId, _milestoneId);
+        }
+    }
+
+    /**
+     * @dev Internal function to execute milestone payout after sufficient approvals
+     * @param _projectId Project ID
+     * @param _milestoneId Milestone ID
+     */
+    function _executeMilestonePayout(
+        uint256 _projectId,
+        uint256 _milestoneId
+    ) internal nonReentrant {
+        Project storage project = projects[_projectId];
+        InvestmentProgram storage program = investmentPrograms[
+            project.programId
+        ];
+        Milestone storage milestone = project.milestones[_milestoneId];
+
+        // Double-check conditions before payout
+        require(
+            milestone.approvalCount >= milestone.requiredApprovals,
+            "Insufficient approvals"
+        );
+        require(!milestone.completed, "Milestone already completed");
+        require(!milestone.paid, "Milestone already paid");
 
         // Mark milestone as completed and paid
         milestone.completed = true;
@@ -1581,6 +2371,70 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
+     * @dev Legacy function for backward compatibility - now requires multi-sig
+     * @param _projectId Project ID
+     * @param _milestoneId Milestone ID
+     */
+    function acceptMilestone(
+        uint256 _projectId,
+        uint256 _milestoneId
+    ) external validProject(_projectId) whenNotPaused {
+        Project storage project = projects[_projectId];
+        InvestmentProgram storage program = investmentPrograms[
+            project.programId
+        ];
+
+        // Check validator permissions using gas-optimized lookup
+        require(program.validatorMapping[msg.sender], "Not a validator");
+        require(
+            _milestoneId < project.milestoneCount,
+            "Milestone does not exist"
+        );
+        require(
+            project.fundingSuccessful,
+            "Project funding was not successful"
+        );
+        require(
+            getProgramStatus(project.programId) != ProgramStatus.Pending,
+            "Cannot approve milestones during pending period"
+        );
+        require(
+            block.timestamp > program.fundingEndTime,
+            "Funding period not ended"
+        );
+
+        Milestone storage milestone = project.milestones[_milestoneId];
+        require(!milestone.completed, "Milestone already completed");
+        require(!milestone.paid, "Milestone already paid");
+        require(
+            block.timestamp <= milestone.deadline,
+            "Milestone deadline passed"
+        );
+        require(
+            !milestone.validatorApprovals[msg.sender],
+            "Validator already approved this milestone"
+        );
+
+        // Add validator approval
+        milestone.validatorApprovals[msg.sender] = true;
+        milestone.approvalCount++;
+
+        emit MilestoneApprovalAdded(
+            _projectId,
+            _milestoneId,
+            msg.sender,
+            milestone.approvalCount,
+            milestone.requiredApprovals
+        );
+
+        // Check if we have enough approvals to complete the milestone
+        if (milestone.approvalCount >= milestone.requiredApprovals) {
+            _executeMilestonePayout(_projectId, _milestoneId);
+        }
+    }
+
+
+    /**
      * @dev Public function to check and mark expired milestones
      * @param _projectId Project ID
      */
@@ -1590,7 +2444,52 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         _checkMilestoneDeadlines(_projectId);
     }
 
+
     // ===== HELPER FUNCTIONS =====
+
+    /**
+     * @dev Internal function to check and claim applicable terms for a supporter
+     * @param _projectId Project ID
+     * @param _supporter Supporter address
+     * @param _totalInvestment Total investment amount by the supporter
+     */
+    function _checkAndClaimTerms(
+        uint256 _projectId,
+        address _supporter,
+        uint256 _totalInvestment
+    ) internal {
+        Project storage project = projects[_projectId];
+        
+        // Check all active terms to see if supporter qualifies for any new ones
+        for (uint256 i = 0; i < project.termCount; i++) {
+            ProjectTerm storage term = project.terms[i];
+            
+            // Skip if term is not active or already claimed by this supporter
+            if (!term.isActive || project.supporterTerms[_supporter].hasClaimedTerm[i]) {
+                continue;
+            }
+            
+            // Check if supporter meets investment requirements
+            bool qualifies = _totalInvestment >= term.minInvestment;
+            if (term.maxInvestment > 0) {
+                qualifies = qualifies && _totalInvestment <= term.maxInvestment;
+            }
+            
+            // Check if purchase limit allows new claims
+            if (term.purchaseLimit > 0 && term.currentPurchases >= term.purchaseLimit) {
+                qualifies = false;
+            }
+            
+            if (qualifies) {
+                // Claim the term for the supporter
+                project.supporterTerms[_supporter].hasClaimedTerm[i] = true;
+                project.supporterTerms[_supporter].claimedTermIds.push(i);
+                term.currentPurchases++;
+                
+                emit SupporterTermClaimed(_projectId, i, _supporter, _totalInvestment);
+            }
+        }
+    }
 
     /**
      * @dev Calculate milestone amounts based on funding success
@@ -1931,14 +2830,65 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
     // ===== EMERGENCY FUNCTIONS =====
 
     /**
-     * @dev Emergency function to force-update a project status (only owner)
+     * @dev Queue project status change operation (requires time-lock)
      * @param _projectId Project ID
      * @param _newStatus New project status
+     * @return operationId The time-lock operation ID
+     */
+    function queueProjectStatusChange(
+        uint256 _projectId,
+        ProjectStatus _newStatus
+    ) external onlyProgramManager returns (bytes32) {
+        bytes memory data = abi.encodeWithSignature(
+            "_executeProjectStatusChange(uint256,uint8)",
+            _projectId,
+            uint8(_newStatus)
+        );
+        
+        string memory description = string(
+            abi.encodePacked(
+                "Change project ",
+                _uint2str(_projectId),
+                " status to ",
+                _uint2str(uint256(_newStatus))
+            )
+        );
+        
+        return queueTimeLockOperation(
+            address(this),
+            0,
+            data,
+            description
+        );
+    }
+
+    /**
+     * @dev Internal function to execute project status change (called via time-lock)
+     * @param _projectId Project ID
+     * @param _newStatus New project status
+     */
+    function _executeProjectStatusChange(
+        uint256 _projectId,
+        uint8 _newStatus
+    ) external validProject(_projectId) {
+        require(msg.sender == address(this), "Only callable via time-lock");
+        
+        Project storage project = projects[_projectId];
+        ProjectStatus oldStatus = project.status;
+        project.status = ProjectStatus(_newStatus);
+
+        emit ProjectStatusChanged(_projectId, oldStatus, ProjectStatus(_newStatus));
+    }
+
+    /**
+     * @dev Legacy emergency functions (deprecated - use time-locked versions)
+     * These are kept for backward compatibility but should be avoided
      */
     function emergencyUpdateProjectStatus(
         uint256 _projectId,
         ProjectStatus _newStatus
-    ) external onlyOwner validProject(_projectId) {
+    ) external onlyEmergencyRole validProject(_projectId) {
+        // Deprecated: Use queueProjectStatusChange instead
         Project storage project = projects[_projectId];
         ProjectStatus oldStatus = project.status;
         project.status = _newStatus;
@@ -1946,20 +2896,77 @@ contract LdInvestmentProgram is Ownable, ReentrancyGuard, Pausable {
         emit ProjectStatusChanged(_projectId, oldStatus, _newStatus);
     }
 
-    /**
-     * @dev Emergency function to force-update a program status (only owner)
-     * @param _programId Program ID
-     * @param _newStatus New program status
-     */
     function emergencyUpdateProgramStatus(
         uint256 _programId,
         ProgramStatus _newStatus
-    ) external onlyOwner validProgram(_programId) {
+    ) external onlyEmergencyRole validProgram(_programId) {
+        // Deprecated: Use queueProgramStatusChange instead
         InvestmentProgram storage program = investmentPrograms[_programId];
         ProgramStatus oldStatus = program.status;
         program.status = _newStatus;
         program.statusCacheValid = false;
 
         emit ProgramStatusChanged(_programId, oldStatus, _newStatus);
+    }
+
+    // ===== ROLE MANAGEMENT FUNCTIONS =====
+
+    /**
+     * @dev Grant a role to an account
+     * @param role The role to grant
+     * @param account The account to grant the role to
+     */
+    function grantRole(bytes32 role, address account) public virtual override onlyRole(getRoleAdmin(role)) {
+        super.grantRole(role, account);
+    }
+
+    /**
+     * @dev Revoke a role from an account
+     * @param role The role to revoke
+     * @param account The account to revoke the role from
+     */
+    function revokeRole(bytes32 role, address account) public virtual override onlyRole(getRoleAdmin(role)) {
+        super.revokeRole(role, account);
+    }
+
+    /**
+     * @dev Renounce a role (account can only renounce roles for themselves)
+     * @param role The role to renounce
+     * @param account The account renouncing the role (must be msg.sender)
+     */
+    function renounceRole(bytes32 role, address account) public virtual override {
+        require(account == msg.sender, "AccessControl: can only renounce roles for self");
+        super.renounceRole(role, account);
+    }
+
+    /**
+     * @dev Get all role information for an account
+     * @param account The account to check
+     * @return Array of role information
+     */
+    function getAccountRoles(address account) external view returns (bool[] memory) {
+        bool[] memory roles = new bool[](6);
+        roles[0] = hasRole(ADMIN_ROLE, account);
+        roles[1] = hasRole(PROGRAM_MANAGER_ROLE, account);
+        roles[2] = hasRole(VALIDATOR_MANAGER_ROLE, account);
+        roles[3] = hasRole(TOKEN_MANAGER_ROLE, account);
+        roles[4] = hasRole(EMERGENCY_ROLE, account);
+        roles[5] = hasRole(PAUSER_ROLE, account);
+        return roles;
+    }
+
+    /**
+     * @dev Get role names for reference
+     * @return Array of role names corresponding to getAccountRoles
+     */
+    function getRoleNames() external pure returns (string[] memory) {
+        string[] memory names = new string[](6);
+        names[0] = "ADMIN_ROLE";
+        names[1] = "PROGRAM_MANAGER_ROLE";
+        names[2] = "VALIDATOR_MANAGER_ROLE";
+        names[3] = "TOKEN_MANAGER_ROLE";
+        names[4] = "EMERGENCY_ROLE";
+        names[5] = "PAUSER_ROLE";
+        return names;
     }
 }

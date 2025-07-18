@@ -64,3 +64,6 @@ gas-report.txt
 .qodo/
 .deps/
 .states/
+
+*.md
+!README*.md
